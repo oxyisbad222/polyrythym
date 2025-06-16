@@ -58,12 +58,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let gameState = 'splash';
     let audioPlayers = null;
     let menuMusicPlayer = null;
+    let activeNoteElements = [];
 
     let score, combo, maxCombo, notesHit, multiplier, rockMeter, starPower;
     let isStarPowerActive = false;
     
     let gameLoopId = null;
-    let scheduledEvents = [];
 
     const NOTE_SPEED_MS = 1500;
     const HIT_WINDOW_MS = 85;
@@ -82,6 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.values(screens).forEach(s => s.classList.remove('active'));
         screens[screenName]?.classList.add('active');
         gameState = screenName;
+        // Special case for entering gameplay
+        if(screenName === 'game') gameState = 'playing';
     }
 
     screens.splash.addEventListener('click', async () => {
@@ -100,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Menu Music ---
     function playMenuMusic() {
-        if (menuMusicPlayer?.state === 'started') return;
+        if (menuMusicPlayer?.state === 'started' || gameState !== 'mainMenu') return;
         const randomSong = MENU_MUSIC[Math.floor(Math.random() * MENU_MUSIC.length)];
         
         menuMusicPlayer = new Tone.Player(randomSong.url).toDestination();
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
         menuMusicPlayer.autostart = true;
         menuMusicPlayer.onerror = (e) => { 
             console.warn("Could not load menu music, trying next one.", e);
+            gameElements.menuMusicCard.classList.remove('visible');
             setTimeout(playMenuMusic, 500); // Try another song after a short delay
         };
 
@@ -151,21 +154,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const artFile = files.find(f => f.name.toLowerCase().match(/album\.(jpg|jpeg|png)$/));
             if (artFile) song.albumArtUrl = URL.createObjectURL(artFile);
             
-            files.filter(f => f.name.endsWith('.opus') || f.name.endsWith('.ogg')).forEach(f => {
+            files.filter(f => f.name.endsWith('.opus') || f.name.endsWith('.ogg') || f.name.endsWith('.mp3')).forEach(f => {
                 const stemName = f.name.substring(0, f.name.lastIndexOf('.'));
                 song.audioUrls[stemName] = URL.createObjectURL(f);
             });
 
             const chartFile = files.find(f => f.name.toLowerCase() === 'notes.chart');
+            const midiFile = files.find(f => f.name.toLowerCase() === 'notes.mid');
+
             if (chartFile) {
                 const chartData = await chartFile.text();
                 Object.assign(song, parseChart(chartData));
+            } else if (midiFile) {
+                const midiData = await midiFile.arrayBuffer();
+                Object.assign(song, parseMidi(midiData));
             } else {
-                 console.warn(`No .chart file found for ${song.name}`);
+                 console.warn(`No .chart or .mid file found for ${song.name}`);
                  return null;
             }
             
-            if (Object.keys(song.availableParts).length === 0 || Object.keys(song.audioUrls).length === 0) return null;
+            if (Object.keys(song.availableParts).length === 0 || Object.keys(song.audioUrls).length === 0) {
+                 console.warn(`Failed to load "${song.name}": Missing audio or chart parts.`);
+                 return null;
+            }
             return song;
         } catch (error) { console.error("Failed to parse song folder:", error); return null; }
     }
@@ -185,6 +196,125 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return data;
     }
+    
+    function parseMidi(arrayBuffer) {
+        const midi = MidiParser.parse(arrayBuffer);
+        const resolution = midi.timeDivision;
+        const notesByTrack = {};
+        const availableParts = {};
+    
+        // 1. Build Tempo Map (SyncTrack)
+        const tempoEvents = [];
+        midi.track.forEach(track => {
+            let currentTick = 0;
+            track.event.forEach(event => {
+                currentTick += event.deltaTime;
+                if (event.metaType === 81) { // Set Tempo
+                    tempoEvents.push({
+                        tick: currentTick,
+                        bpm: 60000000 / ((event.data[0] << 16) | (event.data[1] << 8) | event.data[2])
+                    });
+                }
+            });
+        });
+        tempoEvents.sort((a,b) => a.tick - b.tick);
+    
+        const syncTrack = [];
+        let lastBpm = 120; let lastTick = 0; let timeAtLastBpm = 0;
+        if (tempoEvents.length === 0 || tempoEvents[0].tick > 0) {
+            syncTrack.push({ tick: 0, bpm: 120, time: 0 });
+        }
+    
+        tempoEvents.forEach(bpmEvent => {
+            const ticksSinceLast = bpmEvent.tick - lastTick;
+            timeAtLastBpm += (ticksSinceLast / resolution) * (60 / lastBpm);
+            bpmEvent.time = timeAtLastBpm;
+            syncTrack.push(bpmEvent);
+            lastTick = bpmEvent.tick;
+            lastBpm = bpmEvent.bpm;
+        });
+    
+        const ticksToSeconds = (ticks) => {
+            let time = 0; let lastTick = 0; let lastBpm = 120;
+            const relevantEvent = [...syncTrack].reverse().find(e => e.tick <= ticks);
+            if (relevantEvent) {
+                time = relevantEvent.time;
+                lastTick = relevantEvent.tick;
+                lastBpm = relevantEvent.bpm;
+            }
+            time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
+            return time;
+        };
+        
+        // 2. Parse Note Tracks
+        const trackMappings = {
+            'PART GUITAR': {
+                name: 'Guitar',
+                difficulties: {
+                    'Expert': { base: 96, name: 'Guitar - Expert' },
+                    'Hard':   { base: 84, name: 'Guitar - Hard' },
+                    'Medium': { base: 72, name: 'Guitar - Medium' },
+                    'Easy':   { base: 60, name: 'Guitar - Easy' }
+                }
+            }
+        };
+        const STAR_POWER_NOTE = 116;
+
+        midi.track.forEach(track => {
+            const trackNameEvent = track.event.find(e => e.metaType === 3);
+            const trackName = trackNameEvent ? trackNameEvent.data : '';
+            const mapping = trackMappings[trackName];
+
+            if (!mapping) return;
+
+            let currentTick = 0;
+            const notes = [];
+            const activeNotes = {};
+
+            track.event.forEach(event => {
+                currentTick += event.deltaTime;
+                const type = event.type;
+                if (type === 9 && event.data[1] > 0) { // Note On
+                    activeNotes[event.data[0]] = { tick: currentTick, note: event.data[0] };
+                } else if (type === 8 || (type === 9 && event.data[1] === 0)) { // Note Off
+                    const startNote = activeNotes[event.data[0]];
+                    if (startNote) {
+                        notes.push({
+                            tick: startNote.tick,
+                            midiNote: startNote.note,
+                            duration: currentTick - startNote.tick
+                        });
+                        delete activeNotes[event.data[0]];
+                    }
+                }
+            });
+
+            const starPhrases = notes
+                .filter(n => n.midiNote === STAR_POWER_NOTE)
+                .map(n => ({ tick: n.tick, type: 'star', duration: n.duration }));
+
+            Object.values(mapping.difficulties).forEach(diff => {
+                const difficultyNotes = notes
+                    .filter(n => n.midiNote >= diff.base && n.midiNote < diff.base + 5)
+                    .map(n => ({
+                        tick: n.tick,
+                        fret: n.midiNote - diff.base,
+                        duration: n.duration,
+                        time: ticksToSeconds(n.tick),
+                        isStar: starPhrases.some(sp => n.tick >= sp.tick && n.tick < (sp.tick + sp.duration))
+                    }));
+                
+                if (difficultyNotes.length > 0) {
+                    notesByTrack[diff.name] = difficultyNotes.sort((a, b) => a.time - b.time);
+                    const [instrument, difficulty] = diff.name.split(' - ');
+                    availableParts[instrument] = availableParts[instrument] || [];
+                    availableParts[instrument].push(difficulty);
+                }
+            });
+        });
+        
+        return { notesByTrack, availableParts };
+    }
 
     function parseChart(chartText) {
         const notesByTrack = {};
@@ -203,12 +333,13 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (line.includes('=')) {
                 const parts = line.split('=').map(s => s.trim());
                 const key = parts[0];
+                const val = parts[1];
                 if (currentSection === '[Song]') {
-                    if (key === 'Resolution') resolution = parseFloat(parts[1]);
+                    if (key === 'Resolution') resolution = parseFloat(val);
                 } else if (currentSection === '[SyncTrack]') {
                     const eventParts = key.split(' ').filter(Boolean);
                     if (eventParts[1] === 'B') {
-                        syncTrack.push({ tick: parseInt(eventParts[0]), bpm: parseInt(parts[1]) / 1000 });
+                        syncTrack.push({ tick: parseInt(eventParts[0]), bpm: parseInt(val) / 1000 });
                     }
                 } else if (notesByTrack[currentSection]) {
                      const eventParts = key.split(' ').filter(Boolean);
@@ -216,13 +347,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         notesByTrack[currentSection].push({
                             tick: parseInt(eventParts[0]),
                             fret: parseInt(eventParts[2]),
-                            duration: parseInt(parts[1]),
+                            duration: parseInt(val),
                         });
                      } else if (eventParts[1] === 'S' && eventParts[2] === '2') { // Star Power Phrase
                           notesByTrack[currentSection].push({
                             tick: parseInt(eventParts[0]),
                             type: 'star',
-                            duration: parseInt(parts[1]),
+                            duration: parseInt(val),
                         });
                      }
                 }
@@ -241,9 +372,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const ticksToSeconds = (ticks) => {
             let time = 0; let lastTick = 0; let lastBpm = 120;
-            for(const event of syncTrack){
-                if(ticks < event.tick) break;
-                time = event.time; lastTick = event.tick; lastBpm = event.bpm;
+            const relevantEvent = [...syncTrack].reverse().find(e => e.tick <= ticks);
+            if(relevantEvent){
+                 time = relevantEvent.time;
+                 lastTick = relevantEvent.tick;
+                 lastBpm = relevantEvent.bpm;
             }
             time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
             return time;
@@ -262,8 +395,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 notesByTrack[partMapping[section]] = sectionNotes.sort((a,b) => a.time - b.time);
                 delete notesByTrack[section];
-                availableParts['Guitar'] = availableParts['Guitar'] || [];
-                availableParts['Guitar'].push(partMapping[section].split(' - ')[1]);
+                const [instrument, difficulty] = partMapping[section].split(' - ');
+                availableParts[instrument] = availableParts[instrument] || [];
+                availableParts[instrument].push(difficulty);
             }
         });
         
@@ -295,7 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const btn = document.createElement('button');
                     btn.className = 'menu-btn';
                     btn.textContent = `${instrument} - ${difficulty}`;
-                    btn.onclick = () => startGame(`${instrument}_${difficulty}`);
+                    btn.onclick = () => startGame(`${instrument} - ${difficulty}`);
                     buttons.difficultyOptions.appendChild(btn);
                  }
             });
@@ -309,7 +443,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         await Tone.Transport.cancel();
         await Tone.Transport.stop();
-        if (menuMusicPlayer) menuMusicPlayer.stop();
+        if (menuMusicPlayer) {
+             menuMusicPlayer.stop();
+             menuMusicPlayer.dispose();
+             menuMusicPlayer = null;
+        }
         if(audioPlayers) await audioPlayers.dispose();
         
         activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey])); // Deep copy
@@ -323,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.values(audioPlayers.players).forEach(p => p.toDestination());
             resetGameState();
             navigateTo('game');
-            Tone.Transport.start('+0.1'); // Start with a slight delay
+            Tone.Transport.start('+0.5'); // Start with a slight delay
             gameLoopId = requestAnimationFrame(gameLoop);
         }).toDestination();
     }
@@ -333,37 +471,38 @@ document.addEventListener('DOMContentLoaded', () => {
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
         gameElements.highway.classList.remove('star-power-active');
+        gameElements.noteContainer.innerHTML = ''; // Clear previous notes
         updateUI();
     }
 
     function gameLoop() {
-        if (gameState !== 'playing') return;
+        if (gameState !== 'playing') {
+            cancelAnimationFrame(gameLoopId);
+            return;
+        }
         const currentTime = Tone.Transport.seconds;
         
         activeTrack.notes.forEach(note => {
             if (!note.spawned && note.time - currentTime < (NOTE_SPEED_MS / 1000)) {
                 spawnNote(note);
+                note.spawned = true;
             }
         });
         
         for (let i = activeNoteElements.length - 1; i >= 0; i--) {
-            const note = activeNoteElements[i];
-            const timeUntilHit = note.time - currentTime;
+            const noteData = activeNoteElements[i];
+            const timeUntilHit = noteData.time - currentTime;
             
-            if (timeUntilHit < -(HIT_WINDOW_MS / 1000) && !note.hit) {
-                missNote(note);
+            if (timeUntilHit < -(HIT_WINDOW_MS / 1000) && !noteData.hit && !noteData.missed) {
+                missNote(noteData);
                 activeNoteElements.splice(i, 1);
             } else {
                 const progress = 1 - (timeUntilHit / (NOTE_SPEED_MS / 1000));
-                note.element.style.transform = `translateY(${progress * 105}vh) translateZ(0)`;
+                noteData.element.style.transform = `translateY(${progress * 105}vh) translateZ(0)`;
             }
         }
         
-        if (Tone.Transport.state === 'started' && gameState === 'playing') {
-            gameLoopId = requestAnimationFrame(gameLoop);
-        } else {
-            cancelAnimationFrame(gameLoopId);
-        }
+        gameLoopId = requestAnimationFrame(gameLoop);
     }
     
     function spawnNote(noteData) {
@@ -377,11 +516,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if(noteData.isStar) noteEl.classList.add('star-power');
 
         noteEl.style.left = `${noteData.fret * 20}%`;
-        noteEl.style.transform = `translateY(0vh) translateZ(0)`;
-        noteEl.style.animation = `note-fall ${NOTE_SPEED_MS}ms linear`;
         
         noteData.element = noteEl;
-        noteData.spawned = true;
         activeNoteElements.push(noteData);
         gameElements.noteContainer.appendChild(noteEl);
         
@@ -396,11 +532,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const hitWindowSec = HIT_WINDOW_MS / 1000;
         let noteToHit = null;
 
+        // Find the earliest hittable note for this fret
         for (const note of activeNoteElements) {
             if (note.fret === fretIndex && !note.hit && !note.missed) {
                 if (Math.abs(note.time - currentTime) <= hitWindowSec) {
-                    noteToHit = note;
-                    break;
+                    if(!noteToHit || Math.abs(note.time - currentTime) < Math.abs(noteToHit.time - currentTime)) {
+                       noteToHit = note;
+                    }
                 }
             }
         }
@@ -414,6 +552,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function hitNote(note) {
         note.hit = true;
         note.element.classList.add('hit');
+        // Find and remove from activeNoteElements
+        const index = activeNoteElements.findIndex(n => n === note);
+        if(index > -1) activeNoteElements.splice(index, 1);
+        
         setTimeout(() => { if(note.element.parentElement) note.element.remove() }, 200);
 
         combo++;
@@ -422,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1)];
         score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
         rockMeter = Math.min(100, rockMeter + 1);
-        if (note.isStar) starPower = Math.min(100, starPower + (50 / 16)); // Standard 1/4 of a bar for a phrase
+        if (note.isStar) starPower = Math.min(100, starPower + 3); // Approx 3% per star note
         
         updateUI();
     }
@@ -436,25 +578,34 @@ document.addEventListener('DOMContentLoaded', () => {
         multiplier = 1;
         rockMeter = Math.max(0, rockMeter - 8);
         
-        if (rockMeter <= 0) endGame(true);
+        if (rockMeter <= 0) {
+            endGame(true);
+            return;
+        }
         updateUI();
     }
     
     function activateStarPower() {
-        if (starPower < 50 || isStarPowerActive) return;
+        if (starPower < 50 || isStarPowerActive || gameState !== 'playing') return;
         isStarPowerActive = true;
         gameElements.highway.classList.add('star-power-active');
         
-        let spInterval = setInterval(() => {
-            if (!isStarPowerActive) { clearInterval(spInterval); return; }
-            starPower -= 100 / (8 * 10); // drain over 8 seconds
-            if (starPower <= 0) {
-                starPower = 0; isStarPowerActive = false;
+        const drainInterval = setInterval(() => {
+            if (!isStarPowerActive || gameState !== 'playing') {
+                isStarPowerActive = false;
                 gameElements.highway.classList.remove('star-power-active');
-                clearInterval(spInterval);
+                clearInterval(drainInterval);
+                return;
+            }
+            starPower -= 1; // Drain over a few seconds
+            if (starPower <= 0) {
+                starPower = 0;
+                isStarPowerActive = false;
+                gameElements.highway.classList.remove('star-power-active');
+                clearInterval(drainInterval);
             }
             updateUI();
-        }, 100);
+        }, 80);
     }
 
     function updateUI() {
@@ -484,6 +635,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function endGame(failed = false) {
         cancelAnimationFrame(gameLoopId);
         gameLoopId = null;
+        gameState = 'menu';
         Tone.Transport.stop();
         if (audioPlayers) { audioPlayers.dispose(); audioPlayers = null; }
         
@@ -495,7 +647,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             navigateTo('songSelect');
         }
-        playMenuMusic();
+        // Small delay to prevent menu music from starting instantly
+        setTimeout(() => navigateTo('mainMenu'), 100);
+        setTimeout(playMenuMusic, 500);
     }
 
     function showResults() {
