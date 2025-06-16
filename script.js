@@ -1,4 +1,4 @@
-('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     // --- Caching DOM Elements for performance ---
     const getElement = (id) => document.getElementById(id);
     const screens = {
@@ -11,17 +11,8 @@
         pause: getElement('pause-menu'),
         results: getElement('results-screen'),
     };
-    const buttons = {
-        playGame: getElement('play-game-btn'),
-        playSetlist: getElement('play-setlist-btn'),
-        backToMenu: getElement('back-to-menu-btn'),
-        backToSongSelect: getElement('back-to-song-select-btn'),
-        difficultyOptions: getElement('difficulty-options'),
-        resume: getElement('resume-btn'),
-        quit: getElement('quit-btn'),
-        resultsBack: getElement('results-back-btn'),
-    };
     const gameElements = {
+        background: getElement('game-background'),
         songCount: getElement('song-count'),
         songList: getElement('song-list'),
         difficultySongTitle: getElement('difficulty-song-title'),
@@ -45,12 +36,21 @@
         resultsAccuracy: getElement('results-accuracy'),
         resultsMaxCombo: getElement('results-max-combo'),
     };
+    const buttons = {
+        playSetlist: getElement('play-setlist-btn'),
+        backToMenu: getElement('back-to-menu-btn'),
+        backToSongSelect: getElement('back-to-song-select-btn'),
+        difficultyOptions: getElement('difficulty-options'),
+        resume: getElement('resume-btn'),
+        quit: getElement('quit-btn'),
+        resultsBack: getElement('results-back-btn'),
+    };
 
     // --- Game State & Configuration ---
     let songs = [];
     let currentSongData = null;
     let activeTrack = { notes: [], totalNotes: 0 };
-    let gameState = 'splash'; // splash, mainMenu, loading, playing, paused, results
+    let gameState = 'splash';
     let audioPlayers = null;
     let gameLoopId = null;
 
@@ -78,15 +78,14 @@
     async function initialize() {
         screens.splash.addEventListener('click', async () => {
             await Tone.start();
-            console.log("AudioContext started");
+            console.log("AudioContext started.");
             navigateTo('mainMenu');
         }, { once: true });
         
-        buttons.playGame.addEventListener('click', () => songs.length > 0 && navigateTo('songSelect'));
         buttons.playSetlist.addEventListener('click', loadSetlist);
         buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
         buttons.backToSongSelect.addEventListener('click', () => navigateTo('songSelect'));
-        buttons.quit.addEventListener('click', quitGame);
+        buttons.quit.addEventListener('click', () => quitGame(false));
         buttons.resume.addEventListener('click', resumeGame);
         buttons.resultsBack.addEventListener('click', () => {
             renderSongList();
@@ -106,41 +105,65 @@
             const setlist = await response.json();
             gameElements.loadingText.textContent = `Loading ${setlist.length} song(s)...`;
             
-            const songPromises = setlist.map(parseRemoteSong);
-            const loadedSongs = (await Promise.all(songPromises)).filter(Boolean); // Filter out nulls from failed parses
+            const songPromises = setlist.map(parseSongData);
+            const loadedSongs = (await Promise.all(songPromises)).filter(Boolean);
             
-            songs = [...loadedSongs]; // Replace local songs with the setlist
+            songs = loadedSongs;
             if (songs.length > 0) {
-                 buttons.playGame.disabled = false;
                  gameElements.songCount.textContent = `${songs.length} song${songs.length > 1 ? 's' : ''} loaded`;
                  renderSongList();
                  navigateTo('songSelect');
             } else {
-                throw new Error("No songs could be loaded from the setlist.");
+                throw new Error("No valid songs could be loaded from the setlist.");
             }
         } catch (error) {
             console.error("Could not load setlist:", error);
             gameElements.songCount.textContent = 'Error loading setlist.';
-            navigateTo('mainMenu'); // Go back to menu on error
+            navigateTo('mainMenu');
         }
     }
 
-    async function parseRemoteSong(songData) {
+    async function parseSongData(songEntry) {
         try {
-            console.log(`Parsing: ${songData.name}`);
-            const chartResponse = await fetch(songData.chartUrl);
-            if (!chartResponse.ok) throw new Error(`Failed to fetch chart: ${songData.chartUrl}`);
-            const chartText = await chartResponse.text();
-            
-            const parsedChart = parseChart(chartText);
-            return {
-                ...songData,
-                ...parsedChart
-            };
+            console.log(`Parsing: ${songEntry.name}`);
+            const [chartText, iniText] = await Promise.all([
+                fetch(songEntry.chartUrl).then(res => { if (!res.ok) throw new Error(`Chart fetch failed: ${res.status}`); return res.text(); }),
+                fetch(songEntry.iniUrl).then(res => { if (!res.ok) return ''; return res.text(); }) // INI is optional
+            ]);
+
+            const chartData = parseChart(chartText);
+            const iniData = parseIni(iniText);
+
+            return { ...songEntry, ...iniData, ...chartData };
         } catch (error) {
-            console.error(`Failed to parse remote song "${songData.name}":`, error);
+            console.error(`Failed to parse song data for "${songEntry.name}":`, error);
             return null;
         }
+    }
+
+    function parseIni(text) {
+        const data = {};
+        if (!text) return data;
+
+        const lines = text.split(/\r?\n/);
+        let inSongSection = false;
+        for (const line of lines) {
+            if (line.trim().toLowerCase() === '[song]') {
+                inSongSection = true;
+                continue;
+            }
+            if (line.trim().startsWith('[')) {
+                inSongSection = false;
+                continue;
+            }
+            if (inSongSection) {
+                const parts = line.split('=').map(s => s.trim());
+                if (parts.length === 2) {
+                    data[parts[0].toLowerCase()] = parts[1];
+                }
+            }
+        }
+        return data;
     }
 
     function parseChart(chartText) {
@@ -154,10 +177,11 @@
 
         const partMapping = {
             '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard',
+            '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy',
             '[ExpertBass]': 'Bass - Expert', '[HardBass]': 'Bass - Hard',
+            '[MediumBass]': 'Bass - Medium', '[EasyBass]': 'Bass - Easy'
         };
 
-        // First pass: get sync track and resolution
         lines.forEach(line => {
             line = line.trim();
             if (line.startsWith('[') && line.endsWith(']')) currentSection = line;
@@ -171,13 +195,12 @@
             }
         });
 
-        syncTrack.sort((a,b) => a.tick - b.tick);
+        syncTrack.sort((a, b) => a.tick - b.tick);
         let time = 0;
         let lastTick = 0;
-        let lastBpm = 120;
-        if(syncTrack.length > 0) lastBpm = syncTrack[0].bpm;
-
+        let lastBpm = syncTrack.length > 0 ? syncTrack[0].bpm : 120;
         const timeMap = [{ tick: 0, time: 0, bpm: lastBpm }];
+
         syncTrack.forEach(event => {
             const deltaTicks = event.tick - lastTick;
             time += (deltaTicks / resolution) * (60 / lastBpm);
@@ -192,54 +215,43 @@
             return lastEvent.time + (deltaTicks / resolution) * (60 / lastEvent.bpm);
         };
 
-        // Second pass: get notes
         lines.forEach(line => {
             line = line.trim();
             if (line.startsWith('[') && line.endsWith(']')) {
                 currentSection = line;
-                if(partMapping[currentSection] && !notesByTrack[currentSection]) {
+                if (partMapping[currentSection] && !notesByTrack[currentSection]) {
                     notesByTrack[currentSection] = [];
                 }
             }
             if (notesByTrack[currentSection] && line.includes('=')) {
                 const [key, val] = line.split('=').map(s => s.trim());
-                const [tick, type, fret, ...rest] = key.split(' ').filter(Boolean);
+                const [tick, type, data1, ...rest] = key.split(' ').filter(Boolean);
                 
-                if (type === 'N') { // Note
-                    notesByTrack[currentSection].push({
-                        tick: parseInt(tick),
-                        fret: parseInt(fret),
-                        durationTicks: parseInt(val),
-                        time: ticksToSeconds(parseInt(tick)),
-                        duration: ticksToSeconds(parseInt(tick) + parseInt(val)) - ticksToSeconds(parseInt(tick)),
-                        isStar: false,
-                    });
-                } else if (type === 'S' && fret === '2') { // Star Power Phrase
-                     notesByTrack[currentSection].push({
-                        type: 'star',
-                        tick: parseInt(tick),
-                        durationTicks: parseInt(val),
-                    });
+                if (type === 'N') {
+                    notesByTrack[currentSection].push({ type: 'note', tick: parseInt(tick), fret: parseInt(data1), durationTicks: parseInt(val) });
+                } else if (type === 'S' && data1 === '2') {
+                    notesByTrack[currentSection].push({ type: 'star', tick: parseInt(tick), durationTicks: parseInt(val) });
                 }
             }
         });
 
-        // Final processing: map sections, assign star power, create parts
         Object.keys(partMapping).forEach(section => {
-            if(notesByTrack[section]?.length > 0) {
+            if (notesByTrack[section]?.length > 0) {
                 const trackName = partMapping[section];
                 const starPhrases = notesByTrack[section].filter(n => n.type === 'star');
-                const finalNotes = notesByTrack[section].filter(n => n.type !== 'star');
+                const finalNotes = notesByTrack[section].filter(n => n.type === 'note');
 
                 finalNotes.forEach(note => {
+                    note.time = ticksToSeconds(note.tick);
+                    note.duration = ticksToSeconds(note.tick + note.durationTicks) - note.time;
                     note.isStar = starPhrases.some(sp => note.tick >= sp.tick && note.tick < (sp.tick + sp.durationTicks));
                 });
                 
-                notesByTrack[trackName] = finalNotes.sort((a,b) => a.time - b.time);
+                notesByTrack[trackName] = finalNotes.sort((a, b) => a.time - b.time);
                 delete notesByTrack[section];
                 const [instrument, difficulty] = trackName.split(' - ');
-                if(!availableParts[instrument]) availableParts[instrument] = [];
-                availableParts[instrument].push(difficulty);
+                if (!availableParts[instrument]) availableParts[instrument] = [];
+                if (!availableParts[instrument].includes(difficulty)) availableParts[instrument].push(difficulty);
             }
         });
         
@@ -249,13 +261,13 @@
     // --- UI Rendering ---
     function renderSongList() {
         gameElements.songList.innerHTML = '';
-        songs.sort((a, b) => a.name.localeCompare(b.name)).forEach((song, index) => {
+        songs.sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach((song) => {
             const item = document.createElement('div');
             item.className = 'song-item';
             item.innerHTML = `<b>${song.name}</b><br><small>${song.artist || 'Unknown Artist'}</small>`;
             item.onclick = () => {
                 currentSongData = song;
-                gameElements.difficultySongTitle.textContent = `${song.artist} - ${song.name}`;
+                gameElements.difficultySongTitle.textContent = `${song.artist || ''} - ${song.name || ''}`;
                 renderDifficultyOptions(song.availableParts);
                 navigateTo('difficultySelect');
             };
@@ -263,7 +275,7 @@
         });
     }
 
-    function renderDifficultyOptions(parts) {
+    function renderDifficultyOptions(parts = {}) {
         buttons.difficultyOptions.innerHTML = '';
         Object.entries(parts).forEach(([instrument, difficulties]) => {
             ['Expert', 'Hard', 'Medium', 'Easy'].forEach(difficulty => {
@@ -282,31 +294,35 @@
     async function startGame(trackKey) {
         navigateTo('loading');
         gameElements.loadingText.textContent = 'Loading audio...';
+        gameElements.background.style.backgroundImage = `url('${currentSongData.backgroundUrl || ''}')`;
 
         await Tone.Transport.cancel();
         await Tone.Transport.stop();
         if (audioPlayers) audioPlayers.dispose();
         
-        // Deep copy notes to prevent modification of original data
         activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey]));
-        activeTrack.totalNotes = activeTrack.notes.filter(n => n.fret <= 4).length; // Only count playable notes
+        activeTrack.totalNotes = activeTrack.notes.filter(n => n.fret <= 4).length;
 
         gameElements.albumArt.src = currentSongData.albumArtUrl || 'https://placehold.co/300x300/111/fff?text=No+Art';
         gameElements.songTitle.textContent = currentSongData.name;
         gameElements.songArtist.textContent = currentSongData.artist;
 
-        audioPlayers = new Tone.Players(currentSongData.audioUrls).toDestination();
-        
-        // Wait for all audio files to be loaded
-        await Tone.loaded();
+        try {
+            audioPlayers = new Tone.Players(currentSongData.audioUrls).toDestination();
+            await Tone.loaded();
+        } catch (err) {
+            console.error("Audio loading failed:", err);
+            navigateTo('songSelect');
+            return;
+        }
         
         gameElements.loadingText.textContent = 'Ready!';
         resetGameState();
         
-        // Short delay before starting
         setTimeout(() => {
             navigateTo('game');
-            Tone.Transport.start(Tone.now(), 0); // Start transport precisely at 0
+            gameState = 'playing';
+            Tone.Transport.start(Tone.now(), 0);
             gameLoopId = requestAnimationFrame(gameLoop);
             Object.values(audioPlayers.players).forEach(p => p.start(Tone.now()));
         }, 500);
@@ -315,18 +331,16 @@
     function resetGameState() {
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
-        heldFrets = [false, false, false, false, false];
-        activeSustain = [null, null, null, null, null];
+        heldFrets.fill(false);
+        activeSustain.fill(null);
         
         gameElements.highway.classList.remove('star-power-active');
-        gameElements.noteContainer.innerHTML = ''; // Clear previous notes
+        gameElements.noteContainer.innerHTML = '';
         
-        // Reset notes state for re-playability
         activeTrack.notes.forEach(note => {
             note.spawned = false;
             note.hit = false;
             note.missed = false;
-            if (note.element) note.element.remove();
             note.element = null;
         });
 
@@ -341,14 +355,12 @@
 
         const currentTime = Tone.Transport.seconds;
         
-        // Spawn upcoming notes
         activeTrack.notes.forEach(note => {
             if (!note.spawned && note.time - currentTime < NOTE_FALL_DURATION_S) {
                 spawnNote(note);
             }
         });
 
-        // Update positions and check for misses
         const notesOnScreen = activeTrack.notes.filter(n => n.spawned && !n.hit && !n.missed);
         for (const note of notesOnScreen) {
             const timeUntilHit = note.time - currentTime;
@@ -361,22 +373,19 @@
             }
         }
         
-        // Update sustain trails
-        for(let i = 0; i < 5; i++) {
-            if(activeSustain[i]) {
+        for (let i = 0; i < 5; i++) {
+            if (activeSustain[i]) {
                 const sustainNote = activeSustain[i];
                 const sustainEnd = sustainNote.time + sustainNote.duration;
-                if(currentTime >= sustainEnd || !heldFrets[i]){
-                    activeSustain[i] = null; // Stop sustaining
+                if (currentTime >= sustainEnd || !heldFrets[i]) {
+                    activeSustain[i] = null;
                 } else {
-                     // Update sustain score
-                    score += 1;
+                    score += 1 * (isStarPowerActive ? 2 : 1);
                 }
             }
         }
 
-
-        updateUI(); // Update score, combo etc. continuously
+        updateUI();
         gameLoopId = requestAnimationFrame(gameLoop);
     }
     
@@ -384,20 +393,17 @@
         note.spawned = true;
         const noteEl = document.createElement('div');
         noteEl.className = `note ${FRET_COLORS[note.fret]}`;
-        if(note.isStar) noteEl.classList.add('star-power');
+        if (note.isStar) noteEl.classList.add('star-power');
         noteEl.style.left = `${note.fret * 20}%`;
         
         const gem = document.createElement('div');
         gem.className = 'note-gem';
         noteEl.appendChild(gem);
         
-        // Handle sustain trails
-        if (note.duration > 0.1) { // Only add trail for notes longer than a tap
+        if (note.duration > 0.1) {
             const trail = document.createElement('div');
             trail.className = 'sustain-trail';
-            
-            // Calculate height based on duration and fall speed
-            const fallSpeed = 100 / NOTE_FALL_DURATION_S; // vh per second
+            const fallSpeed = 100 / NOTE_FALL_DURATION_S;
             trail.style.height = `${note.duration * fallSpeed}vh`;
             noteEl.appendChild(trail);
         }
@@ -413,8 +419,6 @@
         if (gameState !== 'playing') return;
         
         const currentTime = Tone.Transport.seconds;
-        
-        // Find the earliest hittable note for this fret
         const hittableNotes = activeTrack.notes.filter(note =>
             !note.hit && !note.missed && note.fret === fretIndex && Math.abs(note.time - currentTime) <= HIT_WINDOW_S
         );
@@ -428,15 +432,14 @@
     function handleFretRelease(fretIndex) {
         heldFrets[fretIndex] = false;
         gameElements.frets[fretIndex].classList.remove('active');
-        if(activeSustain[fretIndex]){
-             activeSustain[fretIndex] = null;
+        if (activeSustain[fretIndex]) {
+            activeSustain[fretIndex] = null;
         }
     }
 
     function hitNote(note) {
         note.hit = true;
-        note.element.classList.add('hidden'); // Hide the note instead of removing
-        
+        note.element.classList.add('hidden');
         showFeedback("Perfect!");
 
         combo++;
@@ -450,7 +453,6 @@
         rockMeter = Math.min(100, rockMeter + 2);
         if (note.isStar) starPower = Math.min(100, starPower + 5);
         
-        // Start sustaining if it's a long note
         if (note.duration > 0.1) {
             activeSustain[note.fret] = note;
         }
@@ -460,28 +462,17 @@
         note.missed = true;
         note.element.classList.add('hidden');
         showFeedback("Miss");
-
         combo = 0;
         multiplier = 1;
         rockMeter = Math.max(0, rockMeter - 8);
-        
-        if (rockMeter <= 0) {
-            quitGame(true); // Failed the song
-        }
+        if (rockMeter <= 0) quitGame(true);
     }
     
     function showFeedback(text) {
         const feedbackEl = document.createElement('div');
         feedbackEl.className = 'feedback-text';
         feedbackEl.textContent = text;
-        
-        // Set color based on text
-        if(text.toLowerCase().includes('miss')) {
-            feedbackEl.style.color = 'var(--fret-red)';
-        } else {
-             feedbackEl.style.color = 'var(--accent-blue)';
-        }
-
+        feedbackEl.style.color = text.toLowerCase().includes('miss') ? 'var(--fret-red)' : 'var(--accent-blue)';
         gameElements.feedbackContainer.appendChild(feedbackEl);
         setTimeout(() => feedbackEl.remove(), 500);
     }
@@ -490,10 +481,8 @@
         if (starPower < 50 || isStarPowerActive || gameState !== 'playing') return;
         isStarPowerActive = true;
         gameElements.highway.classList.add('star-power-active');
-        
-        const spDuration = 8000; // 8 seconds
+        const spDuration = 8000;
         const drainPerInterval = (100 / spDuration) * 100;
-        
         const drainInterval = setInterval(() => {
             starPower -= drainPerInterval / 100;
             if (starPower <= 0) {
@@ -510,15 +499,12 @@
         gameElements.combo.textContent = combo;
         gameElements.multiplier.textContent = `${isStarPowerActive ? multiplier * 2 : multiplier}x`;
         gameElements.rockMeterFill.style.width = `${rockMeter}%`;
-        // Change rock meter color based on value
         if (rockMeter < 25) gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-red)';
         else if (rockMeter < 50) gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-yellow)';
         else gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-green)';
-        
         gameElements.starPowerFill.style.width = `${starPower}%`;
     }
 
-    // --- Game State Control ---
     function pauseGame() {
         if (gameState !== 'playing') return;
         Tone.Transport.pause();
@@ -527,8 +513,8 @@
         screens.pause.classList.add('active');
     }
     
-    function resumeGame(){
-        if(gameState !== 'paused') return;
+    function resumeGame() {
+        if (gameState !== 'paused') return;
         screens.pause.classList.remove('active');
         gameState = 'playing';
         Tone.Transport.start();
@@ -538,14 +524,12 @@
     function quitGame(failed = false) {
         cancelAnimationFrame(gameLoopId);
         gameLoopId = null;
-        gameState = 'menu';
-        Tone.Transport.stop();
         if (audioPlayers) {
             Object.values(audioPlayers.players).forEach(p => p.stop());
             audioPlayers.dispose();
             audioPlayers = null;
         }
-
+        Tone.Transport.stop();
         if (!failed && activeTrack.totalNotes > 0) {
             showResults();
         } else {
@@ -564,18 +548,17 @@
         navigateTo('results');
     }
     
-    // --- Input Handling ---
     function setupInputListeners() {
         window.addEventListener('keydown', (e) => {
             if (e.repeat) return;
             const key = e.key.toLowerCase();
             if (KEY_MAPPING[key] !== undefined) {
-                if(KEY_MAPPING[key] === 'sp') activateStarPower();
+                if (KEY_MAPPING[key] === 'sp') activateStarPower();
                 else handleFretPress(KEY_MAPPING[key]);
             }
             if (e.key === "Escape") {
-                 if(gameState === 'playing') pauseGame();
-                 else if (gameState === 'paused') resumeGame();
+                if (gameState === 'playing') pauseGame();
+                else if (gameState === 'paused') resumeGame();
             }
         });
 
