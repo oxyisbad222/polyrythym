@@ -202,14 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const resolution = midi.timeDivision;
         const notesByTrack = {};
         const availableParts = {};
-    
-        // 1. Build Tempo Map (SyncTrack)
+
         const tempoEvents = [];
         midi.track.forEach(track => {
             let currentTick = 0;
             track.event.forEach(event => {
                 currentTick += event.deltaTime;
-                if (event.metaType === 81) { // Set Tempo
+                if (event.metaType === 81) {
                     tempoEvents.push({
                         tick: currentTick,
                         bpm: 60000000 / ((event.data[0] << 16) | (event.data[1] << 8) | event.data[2])
@@ -246,15 +245,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return time;
         };
         
-        // 2. Parse Note Tracks
         const trackMappings = {
             'PART GUITAR': {
                 name: 'Guitar',
                 difficulties: {
-                    'Expert': { base: 96, name: 'Guitar - Expert' },
-                    'Hard':   { base: 84, name: 'Guitar - Hard' },
-                    'Medium': { base: 72, name: 'Guitar - Medium' },
-                    'Easy':   { base: 60, name: 'Guitar - Easy' }
+                    'Expert': { base: 96, name: 'Guitar - Expert' }, 'Hard': { base: 84, name: 'Guitar - Hard' }, 'Medium': { base: 72, name: 'Guitar - Medium' }, 'Easy': { base: 60, name: 'Guitar - Easy' }
+                }
+            },
+            'PART BASS': {
+                name: 'Bass',
+                difficulties: {
+                    'Expert': { base: 96, name: 'Bass - Expert' }, 'Hard': { base: 84, name: 'Bass - Hard' }, 'Medium': { base: 72, name: 'Bass - Medium' }, 'Easy': { base: 60, name: 'Bass - Easy' }
                 }
             }
         };
@@ -274,33 +275,24 @@ document.addEventListener('DOMContentLoaded', () => {
             track.event.forEach(event => {
                 currentTick += event.deltaTime;
                 const type = event.type;
-                if (type === 9 && event.data[1] > 0) { // Note On
+                if (type === 9 && event.data[1] > 0) {
                     activeNotes[event.data[0]] = { tick: currentTick, note: event.data[0] };
-                } else if (type === 8 || (type === 9 && event.data[1] === 0)) { // Note Off
+                } else if (type === 8 || (type === 9 && event.data[1] === 0)) {
                     const startNote = activeNotes[event.data[0]];
                     if (startNote) {
-                        notes.push({
-                            tick: startNote.tick,
-                            midiNote: startNote.note,
-                            duration: currentTick - startNote.tick
-                        });
+                        notes.push({ tick: startNote.tick, midiNote: startNote.note, duration: currentTick - startNote.tick });
                         delete activeNotes[event.data[0]];
                     }
                 }
             });
 
-            const starPhrases = notes
-                .filter(n => n.midiNote === STAR_POWER_NOTE)
-                .map(n => ({ tick: n.tick, type: 'star', duration: n.duration }));
+            const starPhrases = notes.filter(n => n.midiNote === STAR_POWER_NOTE).map(n => ({ tick: n.tick, type: 'star', duration: n.duration }));
 
             Object.values(mapping.difficulties).forEach(diff => {
                 const difficultyNotes = notes
                     .filter(n => n.midiNote >= diff.base && n.midiNote < diff.base + 5)
                     .map(n => ({
-                        tick: n.tick,
-                        fret: n.midiNote - diff.base,
-                        duration: n.duration,
-                        time: ticksToSeconds(n.tick),
+                        tick: n.tick, fret: n.midiNote - diff.base, duration: n.duration, time: ticksToSeconds(n.tick),
                         isStar: starPhrases.some(sp => n.tick >= sp.tick && n.tick < (sp.tick + sp.duration))
                     }));
                 
@@ -325,6 +317,14 @@ document.addEventListener('DOMContentLoaded', () => {
         let resolution = 192;
         const syncTrack = [];
 
+        // NEW: Expanded mapping for chart sections
+        const partMapping = {
+            '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy',
+            '[ExpertGuitar]': 'Guitar - Expert', '[HardGuitar]': 'Guitar - Hard', '[MediumGuitar]': 'Guitar - Medium', '[EasyGuitar]': 'Guitar - Easy',
+            '[ExpertDoubleBass]': 'Bass - Expert', '[HardDoubleBass]': 'Bass - Hard', '[MediumDoubleBass]': 'Bass - Medium', '[EasyDoubleBass]': 'Bass - Easy',
+            '[ExpertBass]': 'Bass - Expert', '[HardBass]': 'Bass - Hard', '[MediumBass]': 'Bass - Medium', '[EasyBass]': 'Bass - Easy'
+        };
+
         lines.forEach(line => {
             line = line.trim();
             if (line.startsWith('[') && line.endsWith(']')) {
@@ -343,17 +343,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else if (notesByTrack[currentSection]) {
                      const eventParts = key.split(' ').filter(Boolean);
-                     if (eventParts[1] === 'N') { // Note event
+                     if (eventParts[1] === 'N') {
                         notesByTrack[currentSection].push({
-                            tick: parseInt(eventParts[0]),
-                            fret: parseInt(eventParts[2]),
-                            duration: parseInt(val),
+                            tick: parseInt(eventParts[0]), fret: parseInt(eventParts[2]), duration: parseInt(val),
                         });
-                     } else if (eventParts[1] === 'S' && eventParts[2] === '2') { // Star Power Phrase
+                     } else if (eventParts[1] === 'S' && eventParts[2] === '2') {
                           notesByTrack[currentSection].push({
-                            tick: parseInt(eventParts[0]),
-                            type: 'star',
-                            duration: parseInt(val),
+                            tick: parseInt(eventParts[0]), type: 'star', duration: parseInt(val),
                         });
                      }
                 }
@@ -374,15 +370,12 @@ document.addEventListener('DOMContentLoaded', () => {
             let time = 0; let lastTick = 0; let lastBpm = 120;
             const relevantEvent = [...syncTrack].reverse().find(e => e.tick <= ticks);
             if(relevantEvent){
-                 time = relevantEvent.time;
-                 lastTick = relevantEvent.tick;
-                 lastBpm = relevantEvent.bpm;
+                 time = relevantEvent.time; lastTick = relevantEvent.tick; lastBpm = relevantEvent.bpm;
             }
             time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
             return time;
         };
         
-        const partMapping = {'[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy'};
         Object.keys(partMapping).forEach(section => {
             if(notesByTrack[section]?.length > 0){
                 const sectionNotes = notesByTrack[section].filter(n => n.type !== 'star');
@@ -450,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if(audioPlayers) await audioPlayers.dispose();
         
-        activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey])); // Deep copy
+        activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey]));
         activeTrack.totalNotes = activeTrack.notes.length;
         
         gameElements.albumArt.src = currentSongData.albumArtUrl;
@@ -461,7 +454,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.values(audioPlayers.players).forEach(p => p.toDestination());
             resetGameState();
             navigateTo('game');
-            Tone.Transport.start('+0.5'); // Start with a slight delay
+            Tone.Transport.start('+0.5');
             gameLoopId = requestAnimationFrame(gameLoop);
         }).toDestination();
     }
@@ -471,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
         gameElements.highway.classList.remove('star-power-active');
-        gameElements.noteContainer.innerHTML = ''; // Clear previous notes
+        gameElements.noteContainer.innerHTML = '';
         updateUI();
     }
 
@@ -532,7 +525,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const hitWindowSec = HIT_WINDOW_MS / 1000;
         let noteToHit = null;
 
-        // Find the earliest hittable note for this fret
         for (const note of activeNoteElements) {
             if (note.fret === fretIndex && !note.hit && !note.missed) {
                 if (Math.abs(note.time - currentTime) <= hitWindowSec) {
@@ -552,7 +544,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function hitNote(note) {
         note.hit = true;
         note.element.classList.add('hit');
-        // Find and remove from activeNoteElements
         const index = activeNoteElements.findIndex(n => n === note);
         if(index > -1) activeNoteElements.splice(index, 1);
         
@@ -564,7 +555,7 @@ document.addEventListener('DOMContentLoaded', () => {
         multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1)];
         score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
         rockMeter = Math.min(100, rockMeter + 1);
-        if (note.isStar) starPower = Math.min(100, starPower + 3); // Approx 3% per star note
+        if (note.isStar) starPower = Math.min(100, starPower + 3);
         
         updateUI();
     }
@@ -597,7 +588,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearInterval(drainInterval);
                 return;
             }
-            starPower -= 1; // Drain over a few seconds
+            starPower -= 1;
             if (starPower <= 0) {
                 starPower = 0;
                 isStarPowerActive = false;
@@ -647,7 +638,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             navigateTo('songSelect');
         }
-        // Small delay to prevent menu music from starting instantly
         setTimeout(() => navigateTo('mainMenu'), 100);
         setTimeout(playMenuMusic, 500);
     }
