@@ -268,20 +268,23 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLoadingText('Loading Audio...');
             cleanupAudio();
             
-            const audioFile = parsedChart.metadata.MusicStream || 'song.ogg';
-            const audioUrl = new URL(audioFile, songInfo.chartUrl).href;
+            // *** NEW: Audio Fallback Logic ***
+            // Prioritize mp3, then ogg, then a default name.
+            const audioUrl = songInfo.audioUrls.song_mp3 || songInfo.audioUrls.song_ogg || songInfo.audioUrls.song;
+            if (!audioUrl) {
+                throw new Error("No audio URL could be found for this song in setlist.json.");
+            }
             
-            audioPlayers = new Tone.Players({ 'song': audioUrl }).toDestination();
+            audioPlayers = new Tone.Players({ "song": audioUrl }).toDestination();
             await Tone.loaded();
 
-            // *** NEW *** Defensive check to ensure audio players were created
             if (!audioPlayers || !audioPlayers.has("song") || !audioPlayers.get("song").loaded) {
-                throw new Error("Audio file failed to load or decode. The file might be corrupt or in an unsupported format.");
+                throw new Error("Audio file failed to load or decode. The browser may not support the format, or the file could be corrupt.");
             }
 
             updateLoadingText('Setting up visuals...');
             const notes = parsedChart.notesByTrack[trackKey];
-            if (!notes || notes.length === 0) throw new Error(`Track "${trackKey}" has no notes.`);
+            if (!notes || !notes.length === 0) throw new Error(`Track "${trackKey}" has no notes.`);
             
             gameElements.background.style.backgroundImage = `url('${songInfo.backgroundUrl || ''}')`;
             gameElements.albumArt.src = songInfo.albumArtUrl || '';
