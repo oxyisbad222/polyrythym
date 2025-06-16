@@ -64,11 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let score, combo, maxCombo, notesHit, multiplier, rockMeter, starPower;
     let isStarPowerActive = false;
     
-    let gameLoopId = null;
-
     // IMPORTANT: This is a placeholder URL. Replace it with a link to your own setlist.json file.
     // The file should be hosted on a service that supports CORS (like GitHub Gist, Backblaze B2, etc.)
-    const SETLIST_URL = 'https://gist.githubusercontent.com/oxyisbad/4d557c346a6f1955f1f719001880430d/raw/2e7373f7f18576443831850384814b7453488796/setlist.json';
+    const SETLIST_URL = 'setlist.json';
 
     const NOTE_SPEED_MS = 1500;
     const HIT_WINDOW_MS = 85;
@@ -76,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const MULTIPLIER_STAGES = [1, 2, 3, 4, 8];
     const NOTES_PER_MULTIPLIER = 10;
     const MENU_MUSIC = [
-        { title: "Enter Sandman", artist: "Metallica", year: "1991", url: "https://p.scdn.co/mp3-preview/5458066a524a138c53874136606a5b882313624e?cid=774b29d4f13844c495f206cafdad9c86" },
+        { title: "Enter Sandman", artist: "Metallica", year: "1991", url: "https://p.scdn.co/mp3-preview/b29a0b42a532721980333d596537672223c233a3?cid=774b29d4f13844c495f206cafdad9c86" },
         { title: "Welcome to the Jungle", artist: "Guns N' Roses", year: "1987", url: "https://p.scdn.co/mp3-preview/a392a81977579c3af7b822d56a3196903a450518?cid=774b29d4f13844c495f206cafdad9c86" },
     ];
     const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange'];
