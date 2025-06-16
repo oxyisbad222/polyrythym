@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- This div will hold the dynamic song background -->
+    <div id="game-background"></div>
 
     <!-- Splash Screen: Initial user interaction to start audio -->
     <div id="splash-screen" class="screen active">
@@ -24,7 +26,6 @@
     <div id="main-menu" class="screen">
         <h1 class="game-title">PolyRhythm</h1>
         <div class="menu-options">
-            <button id="play-game-btn" class="menu-btn" disabled>Play</button>
             <button id="play-setlist-btn" class="menu-btn">Play Online Setlist</button>
             <p id="song-count">No songs loaded</p>
         </div>
@@ -124,7 +125,6 @@
 
     <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/midi-parser-js@4.0.4/build/midi-parser.min.js"></script>
     
     <!-- Main Game Script -->
     <script src="script.js"></script>
