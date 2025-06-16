@@ -106,6 +106,11 @@ document.addEventListener('DOMContentLoaded', () => {
         menuMusicPlayer = new Tone.Player(randomSong.url).toDestination();
         menuMusicPlayer.loop = true;
         menuMusicPlayer.autostart = true;
+        menuMusicPlayer.onerror = (e) => { 
+            console.warn("Could not load menu music, trying next one.", e);
+            setTimeout(playMenuMusic, 500); // Try another song after a short delay
+        };
+
 
         gameElements.menuMusicTitle.textContent = randomSong.title;
         gameElements.menuMusicArtist.textContent = randomSong.artist;
@@ -196,21 +201,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentSection = line;
                 if (!notesByTrack[currentSection]) notesByTrack[currentSection] = [];
             } else if (line.includes('=')) {
-                const [key, val] = line.split('=').map(s => s.trim());
+                const parts = line.split('=').map(s => s.trim());
+                const key = parts[0];
                 if (currentSection === '[Song]') {
-                    if(key === 'Resolution') resolution = parseFloat(val);
-                } else if(currentSection === '[SyncTrack]') {
-                    const [tick, type, value] = line.split(' ');
-                    if(type === 'B') syncTrack.push({ tick: parseInt(tick), bpm: parseInt(value) / 1000 });
-                } else if (notesByTrack[currentSection]) {
-                    const [tick, type, fret, duration] = line.split(' ');
-                    if(type === 'N') {
-                        notesByTrack[currentSection].push({
-                            tick: parseInt(tick),
-                            fret: parseInt(fret),
-                            duration: parseInt(duration),
-                        });
+                    if (key === 'Resolution') resolution = parseFloat(parts[1]);
+                } else if (currentSection === '[SyncTrack]') {
+                    const eventParts = key.split(' ').filter(Boolean);
+                    if (eventParts[1] === 'B') {
+                        syncTrack.push({ tick: parseInt(eventParts[0]), bpm: parseInt(parts[1]) / 1000 });
                     }
+                } else if (notesByTrack[currentSection]) {
+                     const eventParts = key.split(' ').filter(Boolean);
+                     if (eventParts[1] === 'N') { // Note event
+                        notesByTrack[currentSection].push({
+                            tick: parseInt(eventParts[0]),
+                            fret: parseInt(eventParts[2]),
+                            duration: parseInt(parts[1]),
+                        });
+                     } else if (eventParts[1] === 'S' && eventParts[2] === '2') { // Star Power Phrase
+                          notesByTrack[currentSection].push({
+                            tick: parseInt(eventParts[0]),
+                            type: 'star',
+                            duration: parseInt(parts[1]),
+                        });
+                     }
                 }
             }
         });
@@ -226,25 +240,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const ticksToSeconds = (ticks) => {
-            let time = 0;
-            let lastTick = 0;
-            let lastBpm = 120;
-            let timeAtLastMarker = 0;
-
+            let time = 0; let lastTick = 0; let lastBpm = 120;
             for(const event of syncTrack){
                 if(ticks < event.tick) break;
-                time = event.time;
-                lastTick = event.tick;
-                lastBpm = event.bpm;
+                time = event.time; lastTick = event.tick; lastBpm = event.bpm;
             }
             time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
             return time;
         };
-
+        
         const partMapping = {'[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy'};
         Object.keys(partMapping).forEach(section => {
             if(notesByTrack[section]?.length > 0){
-                notesByTrack[partMapping[section]] = notesByTrack[section].map(n => ({...n, time: ticksToSeconds(n.tick)}));
+                const sectionNotes = notesByTrack[section].filter(n => n.type !== 'star');
+                const starPhrases = notesByTrack[section].filter(n => n.type === 'star');
+                
+                sectionNotes.forEach(note => {
+                    note.time = ticksToSeconds(note.tick);
+                    note.isStar = starPhrases.some(sp => note.tick >= sp.tick && note.tick < sp.tick + sp.duration);
+                });
+
+                notesByTrack[partMapping[section]] = sectionNotes.sort((a,b) => a.time - b.time);
                 delete notesByTrack[section];
                 availableParts['Guitar'] = availableParts['Guitar'] || [];
                 availableParts['Guitar'].push(partMapping[section].split(' - ')[1]);
@@ -260,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
         songs.sort((a, b) => a.name.localeCompare(b.name)).forEach(song => {
             const item = document.createElement('div');
             item.className = 'song-item';
-            item.innerHTML = `<b>${song.name}</b><br>${song.artist}`;
+            item.innerHTML = `<b>${song.name}</b><br>${song.artist || 'Unknown Artist'}`;
             item.onclick = () => {
                 currentSongData = song;
                 gameElements.difficultySongTitle.textContent = `${song.artist} - ${song.name}`;
@@ -296,21 +312,24 @@ document.addEventListener('DOMContentLoaded', () => {
         if (menuMusicPlayer) menuMusicPlayer.stop();
         if(audioPlayers) await audioPlayers.dispose();
         
-        activeTrack.notes = currentSongData.notesByTrack[trackKey].map(n => ({...n, spawned: false, hit: false, missed: false}));
+        activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey])); // Deep copy
         activeTrack.totalNotes = activeTrack.notes.length;
         
-        Object.assign(gameElements, { albumArt: {src: currentSongData.albumArtUrl}, songTitle: {textContent: currentSongData.name}, songArtist: {textContent: currentSongData.artist}});
+        gameElements.albumArt.src = currentSongData.albumArtUrl;
+        gameElements.songTitle.textContent = currentSongData.name;
+        gameElements.songArtist.textContent = currentSongData.artist;
         
         audioPlayers = new Tone.Players(currentSongData.audioUrls, () => {
             Object.values(audioPlayers.players).forEach(p => p.toDestination());
             resetGameState();
             navigateTo('game');
-            Tone.Transport.start();
+            Tone.Transport.start('+0.1'); // Start with a slight delay
             gameLoopId = requestAnimationFrame(gameLoop);
         }).toDestination();
     }
     
     function resetGameState() {
+        activeNoteElements = [];
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
         gameElements.highway.classList.remove('star-power-active');
@@ -320,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function gameLoop() {
         if (gameState !== 'playing') return;
         const currentTime = Tone.Transport.seconds;
-
+        
         activeTrack.notes.forEach(note => {
             if (!note.spawned && note.time - currentTime < (NOTE_SPEED_MS / 1000)) {
                 spawnNote(note);
@@ -336,30 +355,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 activeNoteElements.splice(i, 1);
             } else {
                 const progress = 1 - (timeUntilHit / (NOTE_SPEED_MS / 1000));
-                note.element.style.transform = `translateY(${progress * 105}vh)`;
+                note.element.style.transform = `translateY(${progress * 105}vh) translateZ(0)`;
             }
         }
         
-        if (Tone.Transport.state === 'started') gameLoopId = requestAnimationFrame(gameLoop);
+        if (Tone.Transport.state === 'started' && gameState === 'playing') {
+            gameLoopId = requestAnimationFrame(gameLoop);
+        } else {
+            cancelAnimationFrame(gameLoopId);
+        }
     }
     
     function spawnNote(noteData) {
         const noteEl = document.createElement('div');
         noteEl.className = 'note';
         const gem = document.createElement('div');
-        gem.className = `note-gem`;
+        gem.className = 'note-gem';
         noteEl.appendChild(gem);
         
         noteEl.classList.add(FRET_COLORS[noteData.fret]);
-        if(noteData.isStar) noteEl.classList.add('star-note');
+        if(noteData.isStar) noteEl.classList.add('star-power');
 
         noteEl.style.left = `${noteData.fret * 20}%`;
-        noteEl.style.top = `0%`;
-
+        noteEl.style.transform = `translateY(0vh) translateZ(0)`;
+        noteEl.style.animation = `note-fall ${NOTE_SPEED_MS}ms linear`;
+        
         noteData.element = noteEl;
         noteData.spawned = true;
         activeNoteElements.push(noteData);
         gameElements.noteContainer.appendChild(noteEl);
+        
+        setTimeout(() => { if (noteData.element.parentElement) noteData.element.remove(); }, NOTE_SPEED_MS + 200);
     }
 
     function handleFretPress(fretIndex) {
@@ -387,15 +413,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hitNote(note) {
         note.hit = true;
-        note.element.remove();
-        
+        note.element.classList.add('hit');
+        setTimeout(() => { if(note.element.parentElement) note.element.remove() }, 200);
+
         combo++;
         if (combo > maxCombo) maxCombo = combo;
         notesHit++;
         multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1)];
         score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
-        rockMeter = Math.min(100, rockMeter + 1.5);
-        if (note.isStar) starPower = Math.min(100, starPower + 3.5);
+        rockMeter = Math.min(100, rockMeter + 1);
+        if (note.isStar) starPower = Math.min(100, starPower + (50 / 16)); // Standard 1/4 of a bar for a phrase
         
         updateUI();
     }
@@ -415,16 +442,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function activateStarPower() {
         if (starPower < 50 || isStarPowerActive) return;
-        
         isStarPowerActive = true;
         gameElements.highway.classList.add('star-power-active');
         
-        const spDrainRate = 100 / 8; // Drain over 8 seconds
         let spInterval = setInterval(() => {
-            starPower -= spDrainRate / 10;
+            if (!isStarPowerActive) { clearInterval(spInterval); return; }
+            starPower -= 100 / (8 * 10); // drain over 8 seconds
             if (starPower <= 0) {
-                starPower = 0;
-                isStarPowerActive = false;
+                starPower = 0; isStarPowerActive = false;
                 gameElements.highway.classList.remove('star-power-active');
                 clearInterval(spInterval);
             }
@@ -460,12 +485,14 @@ document.addEventListener('DOMContentLoaded', () => {
         cancelAnimationFrame(gameLoopId);
         gameLoopId = null;
         Tone.Transport.stop();
-        if (audioPlayers) audioPlayers.dispose();
-        gameElements.noteContainer.innerHTML = '';
+        if (audioPlayers) { audioPlayers.dispose(); audioPlayers = null; }
         
-        if (!failed) showResults();
-        else {
-            alert('YOU FAILED!');
+        activeNoteElements.forEach(n => n.element?.remove());
+        activeNoteElements = [];
+
+        if (!failed && activeTrack.totalNotes > 0) {
+            showResults();
+        } else {
             navigateTo('songSelect');
         }
         playMenuMusic();
@@ -486,7 +513,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('keydown', (e) => {
         if (e.repeat) return;
         const key = e.key.toLowerCase();
-        if (KEY_MAPPING[key] !== undefined) {
+        if (gameState === 'playing' && KEY_MAPPING[key] !== undefined) {
             if(KEY_MAPPING[key] === 'sp') activateStarPower();
             else handleFretPress(KEY_MAPPING[key]);
         }
