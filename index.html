@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PolyRhythm</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="main-menu">
+        <h1>PolyRhythm</h1>
+        <div id="song-list"></div>
+        <input type="file" id="song-folder-input" webkitdirectory directory multiple>
+    </div>
+
+    <div id="game-container" style="display: none;">
+        <div id="album-art"></div>
+        <div id="note-container"></div>
+        <div id="fretboard">
+            <div class="fret" data-key="a">A</div>
+            <div class="fret" data-key="s">S</div>
+            <div class="fret" data-key="d">D</div>
+            <div class="fret" data-key="j">J</div>
+            <div class="fret" data-key="k">K</div>
+            <div class="fret" data-key="l">L</div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
