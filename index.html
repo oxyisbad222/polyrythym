@@ -13,18 +13,28 @@
 
     <!-- Splash Screen: Initial interaction point -->
     <div id="splash-screen" class="screen active">
-        <h1 class="game-title">PolyRhythm</h1>
-        <p class="press-start">Click or Tap to Start</p>
+        <div class="splash-content">
+            <h1 class="game-title">PolyRhythm</h1>
+            <p class="press-start">Click or Tap to Start</p>
+        </div>
     </div>
 
     <!-- Main Menu: Navigation hub -->
     <div id="main-menu" class="screen">
+        <div id="menu-music-card">
+            <div id="menu-music-album-art"></div>
+            <div id="menu-music-info">
+                <p id="menu-music-title">Song Title</p>
+                <p id="menu-music-artist">Artist</p>
+                <p id="menu-music-year">Year</p>
+            </div>
+        </div>
         <h1 class="game-title">PolyRhythm</h1>
         <div class="menu-options">
-            <button id="play-game-btn" class="menu-btn">Play</button>
+            <button id="play-game-btn" class="menu-btn" disabled>Play</button>
             <label for="song-folder-input" class="menu-btn button-style">Load Songs</label>
             <input type="file" id="song-folder-input" webkitdirectory directory multiple hidden>
-            <p id="song-count">0 songs loaded</p>
+            <p id="song-count">No songs loaded</p>
         </div>
     </div>
 
@@ -43,7 +53,7 @@
     <div id="difficulty-select-screen" class="screen">
         <h2 id="difficulty-song-title">Song Title</h2>
         <div id="difficulty-options" class="menu-options">
-            <!-- Difficulty buttons will be populated by JS based on available tracks -->
+            <!-- Difficulty buttons will be populated by JS -->
         </div>
          <button id="back-to-song-select-btn" class="menu-btn">Back to Songs</button>
     </div>
@@ -62,20 +72,30 @@
                 <div class="score-label">Score</div>
                 <div id="score">0</div>
             </div>
+             <div class="score-display">
+                <div class="score-label">Multiplier</div>
+                <div id="multiplier">1x</div>
+            </div>
             <div class="score-display">
                 <div class="score-label">Combo</div>
-                 <div id="combo">0x</div>
+                 <div id="combo">0</div>
             </div>
             <div id="rock-meter-container">
-                <div class="rock-meter-label">ROCK</div>
-                <div id="rock-meter-bar">
+                <div class="meter-label">ROCK</div>
+                <div class="meter-bar">
                     <div id="rock-meter-fill"></div>
+                </div>
+            </div>
+            <div id="star-power-container">
+                <div class="meter-label">STAR POWER</div>
+                <div class="meter-bar">
+                    <div id="star-power-fill"></div>
                 </div>
             </div>
         </div>
         <div id="highway">
             <div id="note-container">
-                <!-- Notes will be spawned here by JS -->
+                <!-- Notes, sustains, and effects are spawned here -->
             </div>
             <div id="hit-line"></div>
             <div id="fretboard">
@@ -85,6 +105,7 @@
                 <div class="fret-wrapper"><div class="fret" data-fret="3"></div></div>
                 <div class="fret-wrapper"><div class="fret" data-fret="4"></div></div>
             </div>
+             <div id="highway-fx-container"></div>
         </div>
          <div id="pause-menu" class="screen">
             <h2>Paused</h2>
@@ -99,6 +120,17 @@
     <div id="loading-screen" class="screen">
         <div class="loader"></div>
         <p id="loading-text">Loading...</p>
+    </div>
+
+    <!-- Results Screen -->
+    <div id="results-screen" class="screen">
+        <h2>Results</h2>
+        <h3 id="results-song-info"></h3>
+        <p>Final Score: <span id="results-score">0</span></p>
+        <p>Notes Hit: <span id="results-notes-hit">0</span>/<span id="results-total-notes">0</span></p>
+        <p>Accuracy: <span id="results-accuracy">0%</span></p>
+        <p>Max Combo: <span id="results-max-combo">0</span></p>
+        <button id="results-back-btn" class="menu-btn">Continue</button>
     </div>
 
     <!-- External Libraries -->
