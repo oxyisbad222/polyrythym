@@ -10,10 +10,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- This div will hold the dynamic song background -->
     <div id="game-background"></div>
 
-    <!-- Splash Screen: Initial user interaction to start audio -->
     <div id="splash-screen" class="screen active">
         <div class="splash-content">
             <h1 class="game-title">PolyRhythm</h1>
@@ -22,7 +20,6 @@
         </div>
     </div>
 
-    <!-- Main Menu Screen -->
     <div id="main-menu" class="screen">
         <h1 class="game-title">PolyRhythm</h1>
         <div class="menu-options">
@@ -33,7 +30,6 @@
         </div>
     </div>
 
-    <!-- Song Selection Screen -->
     <div id="song-select-screen" class="screen">
         <h2>Select a Song</h2>
         <div id="song-list-container">
@@ -42,16 +38,13 @@
         <button id="back-to-menu-btn" class="menu-btn">Back</button>
     </div>
     
-    <!-- Difficulty Selection Screen -->
     <div id="difficulty-select-screen" class="screen">
         <h2 id="difficulty-song-title">Song Title</h2>
         <div id="difficulty-options" class="menu-options"></div>
         <button id="back-to-song-select-btn" class="menu-btn">Back to Songs</button>
     </div>
 
-    <!-- Main Game Container -->
     <div id="game-container" class="screen">
-        <!-- Left-side UI Panel -->
         <div id="game-ui">
             <div id="album-art-container">
                 <img id="album-art" src="https://placehold.co/300x300/111/fff?text=Album+Art" alt="Album Art">
@@ -84,7 +77,6 @@
             </div>
         </div>
 
-        <!-- Right-side Highway -->
         <div id="highway">
             <div id="highway-texture"></div>
             <div id="note-container"></div>
@@ -99,7 +91,6 @@
             </div>
         </div>
 
-        <!-- Pause Menu Overlay -->
         <div id="pause-menu" class="screen">
             <h2>Paused</h2>
             <div class="menu-options">
@@ -109,13 +100,11 @@
         </div>
     </div>
     
-    <!-- Loading Screen Overlay -->
     <div id="loading-screen" class="screen">
         <div class="loader"></div>
         <p id="loading-text">Loading...</p>
     </div>
 
-    <!-- Results Screen -->
     <div id="results-screen" class="screen">
         <h2>Results</h2>
         <h3 id="results-song-info"></h3>
@@ -126,11 +115,9 @@
         <button id="results-back-btn" class="menu-btn">Continue</button>
     </div>
 
-    <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/midi-parser-js@4.0.4/build/midi-parser.min.js"></script>
 
-    <!-- Main Game Script -->
     <script src="script.js"></script>
 </body>
 </html>
