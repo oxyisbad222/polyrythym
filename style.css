@@ -1,0 +1,86 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f0f0f0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+#main-menu {
+    text-align: center;
+}
+
+#song-list {
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    max-width: 800px;
+}
+
+.song-item {
+    cursor: pointer;
+    border: 1px solid #ccc;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #fff;
+    transition: background-color 0.2s;
+}
+
+.song-item:hover {
+    background-color: #eee;
+}
+
+#game-container {
+    width: 100%;
+    max-width: 800px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#album-art {
+    width: 100%;
+    padding-top: 100%; /* 1:1 Aspect Ratio */
+    background-size: cover;
+    background-position: center;
+}
+
+#note-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: #333;
+}
+
+.note {
+    position: absolute;
+    width: 16.66%;
+    height: 20px;
+    background-color: red; /* Default color, will be changed by JS */
+    border-radius: 5px;
+}
+
+#fretboard {
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 0;
+    background-color: #222;
+}
+
+.fret {
+    width: 16.66%;
+    padding: 20px 0;
+    text-align: center;
+    color: white;
+    border: 1px solid #555;
+    border-radius: 5px;
+    cursor: pointer;
+    user-select: none; /* Prevent text selection on mobile */
+}
+
+.fret.active {
+    background-color: #555;
+}
