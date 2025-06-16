@@ -1,86 +1,283 @@
+/* --- General Body & Font Styling --- */
+:root {
+    --fret-green: #32c82d;
+    --fret-red: #c82d2d;
+    --fret-yellow: #c8c82d;
+    --fret-blue: #2d64c8;
+    --fret-orange: #c87d2d;
+    --highway-bg: #1a1a1a;
+    --highway-border: #333;
+    --text-light: #f0f0f0;
+    --text-dark: #111;
+    --ui-bg: rgba(10, 10, 10, 0.8);
+}
+
 body {
-    font-family: sans-serif;
+    font-family: 'Roboto', sans-serif;
     margin: 0;
-    background-color: #f0f0f0;
-    display: flex;
+    background-color: #000;
+    color: var(--text-light);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* --- Screen Management --- */
+.screen {
+    display: none;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: url('https://placehold.co/1920x1080/000000/cccccc?text=Stage+Background') no-repeat center center;
+    background-size: cover;
 }
 
-#main-menu {
+.screen.active {
+    display: flex;
+}
+
+/* --- Splash & Menu Styling --- */
+#splash-screen, #main-menu, #song-select-screen, #difficulty-select-screen {
     text-align: center;
+    background-color: rgba(0, 0, 0, 0.7);
 }
 
+.game-title {
+    font-family: 'Bungee', cursive;
+    font-size: clamp(3rem, 10vw, 6rem);
+    color: #fff;
+    text-shadow: 0 0 10px #ff00de, 0 0 20px #ff00de, 0 0 30px #ff00de, 0 0 40px #00aaff, 0 0 70px #00aaff, 0 0 80px #00aaff, 0 0 100px #00aaff;
+    margin-bottom: 1rem;
+}
+
+.press-start {
+    font-size: clamp(1.2rem, 3vw, 2rem);
+    animation: blink 1.5s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+button, .button-style {
+    font-family: 'Bungee', cursive;
+    font-size: 1.5rem;
+    padding: 15px 30px;
+    border: 3px solid var(--text-light);
+    border-radius: 10px;
+    background-color: transparent;
+    color: var(--text-light);
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+}
+
+button:hover, .button-style:hover {
+    background-color: var(--text-light);
+    color: var(--text-dark);
+    transform: scale(1.05);
+}
+
+/* --- Song & Difficulty Selection --- */
 #song-list {
-    margin-top: 20px;
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 15px;
-    max-width: 800px;
+    width: 80%;
+    max-width: 600px;
+    height: 60vh;
+    overflow-y: auto;
+    background: var(--ui-bg);
+    border: 2px solid var(--highway-border);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 20px;
 }
 
 .song-item {
-    cursor: pointer;
-    border: 1px solid #ccc;
-    padding: 10px;
+    padding: 15px;
+    margin-bottom: 10px;
+    background-color: #222;
     border-radius: 5px;
-    background-color: #fff;
+    cursor: pointer;
     transition: background-color 0.2s;
+    font-size: 1.2rem;
 }
 
 .song-item:hover {
-    background-color: #eee;
+    background-color: #444;
 }
 
-#game-container {
-    width: 100%;
-    max-width: 800px;
-    height: 100vh;
+#difficulty-options {
     display: flex;
     flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+
+/* --- Game Container & Highway --- */
+#game-container {
+    justify-content: flex-start;
+    flex-direction: row;
+    background: none;
+}
+
+#game-ui {
+    width: 25%;
+    padding: 20px;
+    background: var(--ui-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100vh;
+}
+
+#album-art-container {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border: 3px solid var(--highway-border);
 }
 
 #album-art {
     width: 100%;
-    padding-top: 100%; /* 1:1 Aspect Ratio */
-    background-size: cover;
-    background-position: center;
+    height: 100%;
+    object-fit: cover;
+}
+
+#rock-meter-container {
+    width: 100%;
+}
+
+#rock-meter-bar {
+    width: 100%;
+    height: 30px;
+    background-color: #333;
+    border: 2px solid var(--highway-border);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#rock-meter-fill {
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff2d2d, #ffdd2d, #2dff2d);
+    transition: width 0.5s ease;
+}
+
+#highway {
+    flex-grow: 1;
+    height: 100vh;
+    background: linear-gradient(to bottom, #111, #333);
+    position: relative;
+    perspective: 800px;
+    overflow: hidden;
 }
 
 #note-container {
-    flex-grow: 1;
-    position: relative;
-    overflow: hidden;
-    background-color: #333;
-}
-
-.note {
     position: absolute;
-    width: 16.66%;
-    height: 20px;
-    background-color: red; /* Default color, will be changed by JS */
-    border-radius: 5px;
+    top: 0;
+    left: 10%;
+    width: 80%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform: rotateX(55deg) translateY(-15%);
 }
 
 #fretboard {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 15%;
     display: flex;
-    justify-content: space-around;
-    padding: 10px 0;
-    background-color: #222;
+    justify-content: center;
+    background: linear-gradient(to top, rgba(0,0,0,1), rgba(0,0,0,0));
+    z-index: 10;
 }
 
 .fret {
-    width: 16.66%;
-    padding: 20px 0;
-    text-align: center;
-    color: white;
-    border: 1px solid #555;
-    border-radius: 5px;
-    cursor: pointer;
-    user-select: none; /* Prevent text selection on mobile */
+    width: 12%;
+    height: 100%;
+    margin: 0 1%;
+    border-radius: 10px;
+    border-top: 5px solid rgba(255,255,255,0.5);
+    background-size: 100% 100%;
+    box-shadow: inset 0 0 10px #000;
+    transition: transform 0.05s;
 }
 
+.fret[data-fret="0"] { background-color: var(--fret-green); }
+.fret[data-fret="1"] { background-color: var(--fret-red); }
+.fret[data-fret="2"] { background-color: var(--fret-yellow); }
+.fret[data-fret="3"] { background-color: var(--fret-blue); }
+.fret[data-fret="4"] { background-color: var(--fret-orange); }
+
 .fret.active {
-    background-color: #555;
+    transform: scale(1.1);
+    box-shadow: 0 0 20px #fff, inset 0 0 10px #000;
+}
+
+
+#hit-line {
+    position: absolute;
+    bottom: 7.5%; /* Vertically centers in the fretboard area */
+    left: 0;
+    width: 100%;
+    height: 10px;
+    background: linear-gradient(to right, transparent, #fff, transparent);
+    box-shadow: 0 0 15px #fff;
+    z-index: 5;
+}
+
+/* --- Notes --- */
+.note {
+    position: absolute;
+    width: 20%; /* 1/5th of the note container */
+    height: 30px;
+    border-radius: 50%;
+    box-shadow: 0 0 15px, inset 0 0 5px rgba(255,255,255,0.7);
+    transform-style: preserve-3d;
+    animation: fall linear;
+}
+
+@keyframes fall {
+    from { transform: translateZ(0); }
+    to { transform: translateZ(800px); }
+}
+
+/* --- Loading Spinner --- */
+#loading-screen {
+    background-color: rgba(0, 0, 0, 0.9);
+    z-index: 999;
+}
+.loader {
+    border: 8px solid #f3f3f3;
+    border-top: 8px solid #3498db;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* --- Pause Menu --- */
+#pause-menu {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.8);
+    z-index: 100;
 }
