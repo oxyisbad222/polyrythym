@@ -27,6 +27,8 @@
         <h1 class="game-title">PolyRhythm</h1>
         <div class="menu-options">
             <button id="play-setlist-btn" class="menu-btn">Play Online Setlist</button>
+            <label for="song-folder-input" class="menu-btn">Load Local Songs</label>
+            <input type="file" id="song-folder-input" webkitdirectory directory multiple hidden>
             <p id="song-count">No songs loaded</p>
         </div>
     </div>
@@ -84,6 +86,7 @@
 
         <!-- Right-side Highway -->
         <div id="highway">
+            <div id="highway-texture"></div>
             <div id="note-container"></div>
             <div id="hit-line"></div>
             <div id="feedback-container"></div>
@@ -125,7 +128,8 @@
 
     <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/midi-parser-js@4.0.4/build/midi-parser.min.js"></script>
+
     <!-- Main Game Script -->
     <script src="script.js"></script>
 </body>
