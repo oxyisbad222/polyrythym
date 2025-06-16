@@ -11,49 +11,44 @@
 </head>
 <body>
 
+    <!-- Splash Screen: Initial user interaction to start audio -->
     <div id="splash-screen" class="screen active">
         <div class="splash-content">
             <h1 class="game-title">PolyRhythm</h1>
             <p class="press-start">Click or Tap to Start</p>
+            <p class="small-text">Made by oxyisbad</p>
         </div>
     </div>
 
+    <!-- Main Menu Screen -->
     <div id="main-menu" class="screen">
-        <div id="menu-music-card">
-            <div id="menu-music-album-art"></div>
-            <div id="menu-music-info">
-                <p id="menu-music-title">Song Title</p>
-                <p id="menu-music-artist">Artist</p>
-                <p id="menu-music-year">Year</p>
-            </div>
-        </div>
         <h1 class="game-title">PolyRhythm</h1>
         <div class="menu-options">
             <button id="play-game-btn" class="menu-btn" disabled>Play</button>
-            <button id="play-setlist-btn" class="menu-btn">Play Setlist</button>
-            <label for="song-folder-input" class="menu-btn button-style">Load Local Songs</label>
-            <input type="file" id="song-folder-input" webkitdirectory directory multiple hidden>
+            <button id="play-setlist-btn" class="menu-btn">Play Online Setlist</button>
             <p id="song-count">No songs loaded</p>
         </div>
     </div>
 
+    <!-- Song Selection Screen -->
     <div id="song-select-screen" class="screen">
         <h2>Select a Song</h2>
         <div id="song-list-container">
-            <div id="song-list">
-                </div>
+            <div id="song-list"></div>
         </div>
         <button id="back-to-menu-btn" class="menu-btn">Back</button>
     </div>
     
+    <!-- Difficulty Selection Screen -->
     <div id="difficulty-select-screen" class="screen">
         <h2 id="difficulty-song-title">Song Title</h2>
-        <div id="difficulty-options" class="menu-options">
-            </div>
-         <button id="back-to-song-select-btn" class="menu-btn">Back to Songs</button>
+        <div id="difficulty-options" class="menu-options"></div>
+        <button id="back-to-song-select-btn" class="menu-btn">Back to Songs</button>
     </div>
 
+    <!-- Main Game Container -->
     <div id="game-container" class="screen">
+        <!-- Left-side UI Panel -->
         <div id="game-ui">
             <div id="album-art-container">
                 <img id="album-art" src="https://placehold.co/300x300/111/fff?text=Album+Art" alt="Album Art">
@@ -62,35 +57,35 @@
                 <h3 id="game-song-title">Song Title</h3>
                 <p id="game-song-artist">Artist</p>
             </div>
-             <div class="score-display">
+            <div class="score-display">
                 <div class="score-label">Score</div>
                 <div id="score">0</div>
             </div>
-             <div class="score-display">
-                <div class="score-label">Multiplier</div>
-                <div id="multiplier">1x</div>
+            <div id="combo-multiplier-container">
+                <div class="score-display">
+                    <div class="score-label">Multiplier</div>
+                    <div id="multiplier">1x</div>
+                </div>
+                <div class="score-display">
+                    <div class="score-label">Combo</div>
+                    <div id="combo">0</div>
+                </div>
             </div>
-            <div class="score-display">
-                <div class="score-label">Combo</div>
-                 <div id="combo">0</div>
-            </div>
-            <div id="rock-meter-container">
+            <div class="meter-container">
                 <div class="meter-label">ROCK</div>
-                <div class="meter-bar">
-                    <div id="rock-meter-fill"></div>
-                </div>
+                <div class="meter-bar"><div id="rock-meter-fill"></div></div>
             </div>
-            <div id="star-power-container">
+            <div class="meter-container">
                 <div class="meter-label">STAR POWER</div>
-                <div class="meter-bar">
-                    <div id="star-power-fill"></div>
-                </div>
+                <div class="meter-bar"><div id="star-power-fill"></div></div>
             </div>
         </div>
+
+        <!-- Right-side Highway -->
         <div id="highway">
-            <div id="note-container">
-                </div>
+            <div id="note-container"></div>
             <div id="hit-line"></div>
+            <div id="feedback-container"></div>
             <div id="fretboard">
                 <div class="fret-wrapper"><div class="fret" data-fret="0"></div></div>
                 <div class="fret-wrapper"><div class="fret" data-fret="1"></div></div>
@@ -98,9 +93,10 @@
                 <div class="fret-wrapper"><div class="fret" data-fret="3"></div></div>
                 <div class="fret-wrapper"><div class="fret" data-fret="4"></div></div>
             </div>
-             <div id="highway-fx-container"></div>
         </div>
-         <div id="pause-menu" class="screen">
+
+        <!-- Pause Menu Overlay -->
+        <div id="pause-menu" class="screen">
             <h2>Paused</h2>
             <div class="menu-options">
                 <button id="resume-btn" class="menu-btn">Resume</button>
@@ -109,24 +105,28 @@
         </div>
     </div>
     
+    <!-- Loading Screen Overlay -->
     <div id="loading-screen" class="screen">
         <div class="loader"></div>
         <p id="loading-text">Loading...</p>
     </div>
 
+    <!-- Results Screen -->
     <div id="results-screen" class="screen">
         <h2>Results</h2>
         <h3 id="results-song-info"></h3>
         <p>Final Score: <span id="results-score">0</span></p>
-        <p>Notes Hit: <span id="results-notes-hit">0</span>/<span id="results-total-notes">0</span></p>
+        <p>Notes Hit: <span id="results-notes-hit">0</span> / <span id="results-total-notes">0</span></p>
         <p>Accuracy: <span id="results-accuracy">0%</span></p>
         <p>Max Combo: <span id="results-max-combo">0</span></p>
         <button id="results-back-btn" class="menu-btn">Continue</button>
     </div>
 
+    <!-- JavaScript Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/midi-parser-js@4.0.4/build/midi-parser.min.js"></script>
     
+    <!-- Main Game Script -->
     <script src="script.js"></script>
 </body>
 </html>
