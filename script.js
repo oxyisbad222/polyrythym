@@ -423,7 +423,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.innerHTML = `<b>${song.name}</b><br><small>${song.artist || 'Unknown Artist'}</small>`;
             item.onclick = () => {
                 currentSongData = song;
-                gameElements.difficultySongTitle.textContent = `${song.artist} - ${song.name}`;
+                gameElements.difficultySongTitle.textContent = `${song.artist || song.name} - ${song.name}`;
                 renderDifficultyOptions(song);
                 navigateTo('difficultySelect');
             };
@@ -451,42 +451,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- GAMEPLAY ---
     async function startGame(songData, trackKey) {
-        navigateTo('loading');
-        gameElements.loadingText.textContent = 'Loading Assets...';
-        
-        gameElements.background.style.backgroundImage = `url('${songData.backgroundUrl || ''}')`;
-        gameElements.highwayTexture.style.backgroundImage = `url('${songData.highwayUrl || ''}')`;
-        gameElements.albumArt.src = songData.albumArtUrl || 'https://placehold.co/300x300/111/fff?text=No+Art';
-        gameElements.songTitle.textContent = songData.name;
-        gameElements.songArtist.textContent = songData.artist;
-
-        await Tone.Transport.cancel();
-        await Tone.Transport.stop();
-        if (audioPlayers) audioPlayers.dispose();
-        
         try {
+            console.log(`[startGame] Attempting to start song: ${songData.name} - ${trackKey}`);
+            navigateTo('loading');
+            gameElements.loadingText.textContent = 'Loading Assets...';
+            
+            const notes = songData.notesByTrack[trackKey];
+            if (!notes || notes.length === 0) {
+                throw new Error(`Track key "${trackKey}" not found or is empty in song data.`);
+            }
+
+            console.log('[startGame] Setting visuals...');
+            gameElements.background.style.backgroundImage = `url('${songData.backgroundUrl || ''}')`;
+            gameElements.highwayTexture.style.backgroundImage = `url('${songData.highwayUrl || ''}')`;
+            gameElements.albumArt.src = songData.albumArtUrl || 'https://placehold.co/300x300/111/fff?text=No+Art';
+            gameElements.songTitle.textContent = songData.name || 'Unknown Song';
+            gameElements.songArtist.textContent = songData.artist || 'Unknown Artist';
+
+            console.log('[startGame] Cleaning up old audio...');
+            await Tone.Transport.cancel();
+            await Tone.Transport.stop();
+            if (audioPlayers) audioPlayers.dispose();
+            
+            console.log('[startGame] Loading new audio...');
             gameElements.loadingText.textContent = 'Loading Audio...';
             audioPlayers = new Tone.Players(songData.audioUrls).toDestination();
             await Tone.loaded();
-        } catch (err) {
-            console.error("Audio loading failed:", err);
+            console.log('[startGame] Audio loaded.');
+            
+            gameElements.loadingText.textContent = 'Ready!';
+            resetGameState(notes);
+            
+            console.log('[startGame] Scheduling gameplay start.');
+            setTimeout(() => {
+                navigateTo('game');
+                gameState = 'playing';
+                Tone.Transport.start(Tone.now(), 0);
+                gameLoopId = requestAnimationFrame(gameLoop);
+                Object.values(audioPlayers.players).forEach(p => p.start(Tone.now()));
+                console.log('[startGame] Gameplay started.');
+            }, 500);
+
+        } catch (error) {
+            console.error("--- FATAL: Could not start game ---", error);
+            // Navigate back to the song selection screen to prevent getting stuck.
             navigateTo('songSelect');
-            return;
         }
-        
-        gameElements.loadingText.textContent = 'Ready!';
-        resetGameState(songData.notesByTrack[trackKey]);
-        
-        setTimeout(() => {
-            navigateTo('game');
-            gameState = 'playing';
-            Tone.Transport.start(Tone.now(), 0);
-            gameLoopId = requestAnimationFrame(gameLoop);
-            Object.values(audioPlayers.players).forEach(p => p.start(Tone.now()));
-        }, 500);
     }
     
     function resetGameState(notes) {
+        console.log('[resetGameState] Resetting all gameplay variables.');
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
         heldFrets.fill(false);
@@ -685,7 +699,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!failed && activeTrack.totalNotes > 0) {
             showResults();
         } else {
-            navigateTo('mainMenu');
+            navigateTo('songSelect');
         }
     }
 
