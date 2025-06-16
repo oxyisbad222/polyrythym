@@ -5,7 +5,8 @@
     "backgroundUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/background.png",
     "highwayUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/highways/highway.jpg",
     "audioUrls": {
-      "song": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ogg"
+      "song_mp3": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.mp3",
+      "song_ogg": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ogg"
     },
     "chartUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/notes.chart",
     "iniUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ini"
