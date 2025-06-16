@@ -34,6 +34,21 @@ html, body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* --- Dynamic Background --- */
+#game-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url('https://images.unsplash.com/photo-1516035258285-a73357738b39?q=80&w=2070&auto=format&fit=crop');
+    background-size: cover;
+    background-position: center;
+    transition: background-image 0.5s ease-in-out;
+    z-index: -1; /* Place it behind everything */
+}
+
+
 /* --- Screen Management --- */
 .screen {
     display: none; /* Hidden by default */
@@ -45,8 +60,8 @@ html, body {
     position: absolute;
     top: 0;
     left: 0;
-    background: url('https://images.unsplash.com/photo-1516035258285-a73357738b39?q=80&w=2070&auto=format&fit=crop') no-repeat center center;
-    background-size: cover;
+    background-color: rgba(0, 0, 0, 0.6); /* Semi-transparent overlay for all screens */
+    backdrop-filter: blur(8px);
     transition: opacity 0.5s ease;
     padding: 2rem;
 }
@@ -57,8 +72,6 @@ html, body {
 
 /* Overlays should have a higher z-index */
 #loading-screen, #pause-menu, #results-screen {
-    background-color: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(10px);
     z-index: 1000;
 }
 
@@ -167,15 +180,17 @@ h2 {
 #game-container {
     flex-direction: row;
     justify-content: flex-start;
-    background: #111;
+    background: transparent; /* Let the game-background show through */
     padding: 0;
+    backdrop-filter: none; /* No blur on game screen */
 }
 #game-ui {
     width: 25vw;
     max-width: 300px;
     min-width: 220px;
     padding: 20px;
-    background: linear-gradient(90deg, #050505, #1a1a1a);
+    background: linear-gradient(90deg, rgba(5,5,5,0.8), rgba(26,26,26,0.7));
+    backdrop-filter: blur(5px);
     display: flex;
     flex-direction: column;
     gap: 15px;
@@ -219,7 +234,7 @@ h2 {
 #highway {
     flex-grow: 1;
     height: 100vh;
-    background: linear-gradient(to top, #000 5%, #111 40%, #333 100%);
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 5%, rgba(17,17,17,0.5) 40%, rgba(51,51,51,0.2) 100%);
     position: relative;
     perspective: 800px;
     overflow: hidden;
@@ -293,6 +308,7 @@ h2 {
     z-index: 5;
     transform: translateY(50%);
     border-radius: 5px;
+    box-shadow: 0 0 15px rgba(0, 170, 255, 0.5);
 }
 .note {
     position: absolute;
@@ -321,6 +337,7 @@ h2 {
     height: 0; /* Will be set by JS */
     transform-origin: bottom center;
     background-color: currentColor; /* Inherits color from parent .note */
+    opacity: 0.7;
 }
 
 /* Fret and Note Colors */
