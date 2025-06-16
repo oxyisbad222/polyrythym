@@ -5,6 +5,7 @@
     --fret-yellow: #c8c82d;
     --fret-blue: #2d64c8;
     --fret-orange: #c87d2d;
+    --note-star: #fff;
     --highway-bg: #1a1a1a;
     --highway-border: #333;
     --text-light: #f0f0f0;
@@ -13,6 +14,10 @@
     --ui-border: rgba(128, 128, 128, 0.5);
     --accent-pink: #ff00de;
     --accent-blue: #00aaff;
+    --rock-meter-green: #32c82d;
+    --rock-meter-yellow: #c8c82d;
+    --rock-meter-red: #c82d2d;
+    --star-power-color: #00aaff;
 }
 
 * {
@@ -34,7 +39,7 @@ html, body {
 
 /* --- Screen Management --- */
 .screen {
-    display: none; /* Hidden by default */
+    display: none;
     flex-direction: column;
     justify-content: center;
     align-items: center;
@@ -43,20 +48,28 @@ html, body {
     position: absolute;
     top: 0;
     left: 0;
-    background: url('https://images.unsplash.com/photo-1598387993441-a364f854c3e1?q=80&w=2070&auto=format&fit=crop') no-repeat center center;
+    background: url('https://images.unsplash.com/photo-1516035258285-a73357738b39?q=80&w=2070&auto=format&fit=crop') no-repeat center center;
     background-size: cover;
     transition: opacity 0.5s ease;
+    padding: 2rem;
 }
 
 .screen.active {
-    display: flex; /* Shown when active */
+    display: flex;
 }
 
-/* --- Splash, Menus, and Buttons --- */
-#splash-screen, #main-menu, #song-select-screen, #difficulty-select-screen, #pause-menu {
-    background-color: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(5px);
-    text-align: center;
+/* --- Splash Screen --- */
+#splash-screen .splash-content {
+    background-color: rgba(0,0,0,0.6);
+    padding: 2rem 4rem;
+    border-radius: 15px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+}
+
+/* --- Menu & Buttons --- */
+#main-menu, #song-select-screen, #difficulty-select-screen, #pause-menu, #results-screen {
+    background-color: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
 }
 
 .game-title {
@@ -64,6 +77,7 @@ html, body {
     font-size: clamp(3rem, 12vw, 7rem);
     color: #fff;
     text-shadow: 0 0 8px #fff, 0 0 15px var(--accent-pink), 0 0 25px var(--accent-pink), 0 0 40px var(--accent-blue), 0 0 60px var(--accent-blue);
+    margin: 0;
     margin-bottom: 1rem;
     letter-spacing: 0.1em;
 }
@@ -82,6 +96,8 @@ h2 {
     font-family: 'Bungee', cursive;
     font-size: 2.5rem;
     margin-bottom: 2rem;
+    color: var(--accent-blue);
+    text-shadow: 0 0 5px #000;
 }
 
 .menu-options {
@@ -96,7 +112,7 @@ h2 {
     font-family: 'Bungee', cursive;
     font-size: 1.5rem;
     padding: 15px 30px;
-    border: 3px solid var(--text-light);
+    border: 3px solid var(--ui-border);
     border-radius: 5px;
     background: linear-gradient(to right, rgba(255,255,255,0.1), rgba(255,255,255,0));
     color: var(--text-light);
@@ -105,17 +121,54 @@ h2 {
     text-align: center;
 }
 
-.menu-btn:hover, .button-style:hover {
+.menu-btn:not(:disabled):hover, .button-style:hover {
     background-color: var(--text-light);
     color: var(--text-dark);
     transform: scale(1.05);
     box-shadow: 0 0 15px var(--accent-blue);
 }
 
-#song-count {
-    margin-top: 1rem;
-    font-size: 1rem;
-    color: #aaa;
+.menu-btn:disabled {
+    cursor: not-allowed;
+    color: #555;
+    background: rgba(0,0,0,0.2);
+    border-color: #444;
+}
+
+/* --- Music Card (Main Menu) --- */
+#menu-music-card {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    display: flex;
+    align-items: center;
+    background-color: var(--ui-bg);
+    border-radius: 8px;
+    padding: 10px;
+    border: 1px solid var(--ui-border);
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+}
+#menu-music-card.visible {
+    opacity: 1;
+}
+#menu-music-album-art {
+    width: 80px;
+    height: 80px;
+    background-size: cover;
+    border-radius: 4px;
+    margin-right: 15px;
+}
+#menu-music-info p {
+    margin: 0;
+    line-height: 1.4;
+}
+#menu-music-title {
+    font-weight: bold;
+}
+#menu-music-artist, #menu-music-year {
+    font-size: 0.9rem;
+    color: #ccc;
 }
 
 /* --- Song/Difficulty Selection --- */
@@ -181,59 +234,45 @@ h2 {
     object-fit: cover;
 }
 
-#song-info h3, #song-info p {
-    margin: 0;
-    text-align: center;
-}
+#song-info h3, #song-info p { margin: 0; text-align: center; }
 
-.score-display {
-    text-align: center;
-    font-family: 'Bungee', cursive;
-}
-.score-label {
-    font-size: 1rem;
-    color: #aaa;
-}
-#score, #combo {
-    font-size: 2rem;
-}
+.score-display { text-align: center; font-family: 'Bungee', cursive; }
+.score-label { font-size: 1rem; color: #aaa; text-transform: uppercase; }
+#score, #multiplier, #combo { font-size: 2rem; }
 
-#rock-meter-bar {
-    width: 100%;
-    height: 30px;
-    background-color: #222;
-    border: 2px solid var(--ui-border);
-    border-radius: 15px;
-    overflow: hidden;
-    padding: 3px;
-}
-
-#rock-meter-fill {
-    height: 100%;
-    width: 50%;
-    border-radius: 10px;
-    background: linear-gradient(90deg, #c82d2d, #c8c82d, #32c82d);
-    transition: width 0.3s ease-out;
-}
+.meter-label { text-align: center; font-family: 'Bungee', cursive; margin-bottom: 5px; }
+.meter-bar { width: 100%; height: 30px; background-color: #222; border: 2px solid var(--ui-border); border-radius: 15px; overflow: hidden; padding: 3px; }
+#rock-meter-fill { height: 100%; width: 50%; border-radius: 10px; background: linear-gradient(90deg, var(--rock-meter-red), var(--rock-meter-yellow), var(--rock-meter-green)); transition: width 0.3s ease-out; }
+#star-power-fill { height: 100%; width: 0%; border-radius: 10px; background-color: var(--star-power-color); transition: width 0.1s linear; }
 
 /* --- Highway & Notes --- */
 #highway {
     flex-grow: 1;
     height: 100vh;
-    background: linear-gradient(to top, #000, #222 70%);
+    background: linear-gradient(to top, #000 5%, #111 40%, #333 100%);
     position: relative;
-    perspective: 600px;
+    perspective: 700px;
     overflow: hidden;
+}
+
+#highway.star-power-active {
+    animation: starPowerPulse 1s infinite;
+}
+
+@keyframes starPowerPulse {
+    0% { box-shadow: inset 0 0 30px var(--star-power-color); }
+    50% { box-shadow: inset 0 0 60px var(--accent-pink); }
+    100% { box-shadow: inset 0 0 30px var(--star-power-color); }
 }
 
 #note-container {
     position: absolute;
     top: 0;
     left: 50%;
-    width: 45%;
+    width: 50%;
     height: 120%;
     transform-style: preserve-3d;
-    transform: translateX(-50%) rotateX(60deg) translateY(-20%);
+    transform: translateX(-50%) rotateX(60deg) translateY(-25%);
     border-left: 2px solid rgba(255, 255, 255, 0.1);
     border-right: 2px solid rgba(255, 255, 255, 0.1);
 }
@@ -250,37 +289,9 @@ h2 {
     z-index: 10;
 }
 
-.fret-wrapper {
-    width: 10%;
-    height: 100%;
-    margin: 0 1%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.fret {
-    width: 100%;
-    height: 80%;
-    border-radius: 50%;
-    border: 4px solid #333;
-    background-color: #111;
-    position: relative;
-    cursor: pointer;
-    transition: transform 0.05s ease-out;
-}
-
-.fret::after { /* Fret color inlay */
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 70%;
-    height: 70%;
-    border-radius: 50%;
-    transition: all 0.1s;
-}
+.fret-wrapper { width: 10%; height: 100%; margin: 0 1%; display: flex; justify-content: center; align-items: center; }
+.fret { width: 100%; height: 80%; border-radius: 50%; border: 4px solid #333; background-color: #111; position: relative; cursor: pointer; transition: transform 0.05s ease-out; }
+.fret::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70%; height: 70%; border-radius: 50%; transition: all 0.1s; }
 
 .fret[data-fret="0"]::after { background-color: var(--fret-green); }
 .fret[data-fret="1"]::after { background-color: var(--fret-red); }
@@ -288,61 +299,68 @@ h2 {
 .fret[data-fret="3"]::after { background-color: var(--fret-blue); }
 .fret[data-fret="4"]::after { background-color: var(--fret-orange); }
 
-.fret.active {
-    transform: scale(0.95);
-}
-.fret.active::after {
-    filter: brightness(2.5);
-    box-shadow: 0 0 20px #fff, 0 0 30px currentColor;
-}
-
-
-#hit-line {
-    position: absolute;
-    bottom: 14vh; /* Aligns with center of frets */
-    left: 0;
-    width: 100%;
-    height: 4px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
-    z-index: 5;
-}
+.fret.active::after { filter: brightness(2.5); box-shadow: 0 0 20px #fff, 0 0 30px currentColor; }
+#hit-line { position: absolute; bottom: 14vh; left: 0; width: 100%; height: 4px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent); z-index: 5; }
 
 .note {
     position: absolute;
-    width: 20%; /* 1/5th of the note container width */
-    height: 0;
-    padding-bottom: 20%; /* Creates a circle with a responsive height */
+    width: 20%;
+    padding-bottom: 20%;
     border-radius: 50%;
-    box-shadow: 0 0 15px, inset 0 0 5px rgba(255,255,255,0.7);
-    transform: translateZ(0); /* Start position for animation */
+    transform-style: preserve-3d;
     will-change: transform;
+    animation-name: note-fall;
+    animation-timing-function: linear;
 }
 
-.note.green { background-color: var(--fret-green); box-shadow: 0 0 15px var(--fret-green); }
-.note.red { background-color: var(--fret-red); box-shadow: 0 0 15px var(--fret-red); }
-.note.yellow { background-color: var(--fret-yellow); box-shadow: 0 0 15px var(--fret-yellow); }
-.note.blue { background-color: var(--fret-blue); box-shadow: 0 0 15px var(--fret-blue); }
-.note.orange { background-color: var(--fret-orange); box-shadow: 0 0 15px var(--fret-orange); }
+@keyframes note-fall {
+    from { transform: translateZ(-200px) translateY(0); }
+    to { transform: translateZ(800px) translateY(0); }
+}
+
+.note.hit {
+    animation: note-hit-fx 0.2s ease-out forwards;
+}
+
+@keyframes note-hit-fx {
+    from { transform: scale(1.5); opacity: 1; }
+    to { transform: scale(3); opacity: 0; }
+}
+
+.note-gem {
+    position: absolute;
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background-image: radial-gradient(circle at 30% 30%, #fff, #aaa 90%);
+}
+
+.green .note-gem { background-color: var(--fret-green); }
+.red .note-gem { background-color: var(--fret-red); }
+.yellow .note-gem { background-color: var(--fret-yellow); }
+.blue .note-gem { background-color: var(--fret-blue); }
+.orange .note-gem { background-color: var(--fret-orange); }
+
+.star-note .note-gem {
+    background-image: radial-gradient(circle at 30% 30%, #fff, var(--note-star) 90%);
+    box-shadow: 0 0 10px var(--star-power-color), 0 0 20px var(--star-power-color);
+}
+
+/* --- Results Screen --- */
+#results-screen {
+    text-align: center;
+    font-size: 1.5rem;
+}
+#results-screen h3 {
+    font-size: 2rem;
+    color: var(--accent-blue);
+}
+#results-screen p {
+    margin: 0.5rem 0;
+}
+#results-back-btn { margin-top: 2rem; }
 
 /* --- Loading & Pause --- */
-#loading-screen, #pause-menu {
-    z-index: 999;
-}
-
-.loader {
-    border: 8px solid #333;
-    border-top: 8px solid var(--accent-blue);
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-#loading-text {
-    font-size: 1.2rem;
-}
+#loading-screen, #pause-menu { z-index: 999; }
+.loader { border: 8px solid #333; border-top: 8px solid var(--accent-blue); border-radius: 50%; width: 60px; height: 60px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading-text { font-size: 1.2rem; }
