@@ -61,12 +61,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Constants ---
     const SETLIST_URL = 'setlist.json';
     const NOTE_FALL_DURATION_S = 1.5;
-    const HIT_WINDOW_S = 0.1; // Slightly more generous timing window
-    const SONG_START_DELAY_S = 2; // 2-second pre-game countdown
+    const HIT_WINDOW_S = 0.1;
     const KEY_MAPPING = { 'a': 0, 's': 1, 'd': 2, 'k': 3, 'l': 4, ' ': 'sp' };
-    const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange'];
-    const MULTIPLIER_STAGES = [1, 2, 3, 4];
-    const NOTES_PER_MULTIPLIER = 10;
+    const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange', 'purple', 'cyan', 'white']; // Added open note color
 
     // --- Core Game Flow & Screen Management ---
     const navigateTo = (screenName) => {
@@ -74,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
         screens[screenName]?.classList.add('active');
         gameState = screenName;
     };
-
+    
     const updateLoadingText = (text) => {
         gameElements.loadingText.textContent = text;
     };
@@ -86,52 +83,85 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLoadingText('Fetching Online Setlist...');
             const response = await fetch(SETLIST_URL);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-            const setlist = await response.json();
-            songs = setlist; // Directly assign, assuming valid format for now
+            songs = await response.json();
             gameElements.songCount.textContent = `${songs.length} song${songs.length > 1 ? 's' : ''} loaded`;
             renderSongList();
             navigateTo('songSelect');
         } catch (error) {
             console.error("Could not load setlist:", error);
-            alert("Error loading online setlist. Please check the console for details.");
+            alert("Error loading online setlist.");
             navigateTo('mainMenu');
         }
     };
     
-    // This function is kept for local file loading if you re-add that feature.
-    // For now, it's unused to simplify the focus on the online setlist.
-    async function handleSongFolderSelect(event) {
-        alert("Local file loading is not currently implemented.");
-    }
-
     const parseChart = (chartText) => {
-        // ... (This function remains the same as the robust version from before)
-        // It's assumed to be correct for the purpose of this refactor.
-        // A real-world scenario might involve replacing this with a more heavily tested library.
-        const notesByTrack = {};
-        const availableParts = {};
-        const lines = chartText.split(/\r?\n/);
-        let currentSection = '', resolution = 192;
-        const syncTrack = [];
-        const partMapping = {
-            '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard',
-            '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy'
+        const songData = {
+            metadata: {},
+            syncTrack: [],
+            events: [],
+            notesByTrack: {},
+            availableParts: {}
         };
+        const lines = chartText.split(/\r?\n/);
+        let currentSection = '';
+        let inBrackets = false;
+
         lines.forEach(line => {
             line = line.trim();
-            if (line.startsWith('[') && line.endsWith(']')) currentSection = line;
-            else if (line.includes('=')) {
-                const [key, val] = line.split('=').map(s => s.trim());
-                if (currentSection === '[Song]' && key === 'Resolution') resolution = parseFloat(val);
-                if (currentSection === '[SyncTrack]' && key.split(' ')[1] === 'B') {
-                    syncTrack.push({ tick: parseInt(key.split(' ')[0]), bpm: parseInt(val) / 1000 });
+            if (line.startsWith('[') && line.endsWith(']')) {
+                currentSection = line;
+                return;
+            }
+            if (line === '{') {
+                inBrackets = true;
+                return;
+            }
+            if (line === '}') {
+                inBrackets = false;
+                return;
+            }
+
+            if (inBrackets) {
+                const parts = line.split('=').map(s => s.trim());
+                if (parts.length < 2) return;
+                const key = parts[0];
+                const value = parts.slice(1).join('=').replace(/"/g, '');
+
+                switch (currentSection) {
+                    case '[Song]':
+                        songData.metadata[key] = isNaN(value) ? value : parseFloat(value);
+                        break;
+                    case '[SyncTrack]':
+                        songData.syncTrack.push({ tick: parseInt(key), rawValue: value });
+                        break;
+                    case '[Events]':
+                        songData.events.push({ tick: parseInt(key), text: value });
+                        break;
+                    default: // Instrument Tracks
+                        if (!songData.notesByTrack[currentSection]) {
+                            songData.notesByTrack[currentSection] = [];
+                        }
+                        songData.notesByTrack[currentSection].push({ tick: parseInt(key), rawValue: value });
+                        break;
                 }
             }
         });
-        syncTrack.sort((a, b) => a.tick - b.tick);
-        let time = 0, lastTick = 0, lastBpm = syncTrack[0]?.bpm || 120;
+
+        // --- Process Raw Parsed Data ---
+        const { metadata, syncTrack, notesByTrack } = songData;
+        const resolution = metadata.Resolution || 192;
+        
+        // Build Time Map for tick-to-second conversion
+        const bpmEvents = syncTrack.filter(e => e.rawValue.includes('B')).map(e => ({
+            tick: e.tick,
+            bpm: parseInt(e.rawValue.split(' ')[1]) / 1000
+        }));
+        bpmEvents.sort((a, b) => a.tick - b.tick);
+
+        let time = 0, lastTick = 0;
+        let lastBpm = bpmEvents[0]?.bpm || 120;
         const timeMap = [{ tick: 0, time: 0, bpm: lastBpm }];
-        syncTrack.forEach(event => {
+        bpmEvents.forEach(event => {
             const deltaTicks = event.tick - lastTick;
             time += (deltaTicks / resolution) * (60 / lastBpm);
             timeMap.push({ tick: event.tick, time, bpm: event.bpm });
@@ -142,37 +172,43 @@ document.addEventListener('DOMContentLoaded', () => {
             const lastEvent = timeMap.filter(e => e.tick <= ticks).pop();
             return lastEvent.time + ((ticks - lastEvent.tick) / resolution) * (60 / lastEvent.bpm);
         };
-        const tempNotes = {};
-        lines.forEach(line => {
-            line = line.trim();
-            if (line.startsWith('[') && line.endsWith(']')) currentSection = line;
-            else if (partMapping[currentSection] && line.includes('=')) {
-                if (!tempNotes[currentSection]) tempNotes[currentSection] = [];
-                const [key, val] = line.split('=').map(s => s.trim());
-                const [tick, type, data1, data2] = key.split(' ').filter(Boolean);
-                if (type === 'N') tempNotes[currentSection].push({ type: 'note', tick: parseInt(tick), fret: parseInt(data1), durationTicks: parseInt(data2) });
-                if (type === 'S' && data1 === '2') tempNotes[currentSection].push({ type: 'star', tick: parseInt(tick), durationTicks: parseInt(data2) });
-            }
-        });
-        Object.keys(partMapping).forEach(section => {
-            if (tempNotes[section]?.length > 0) {
-                const trackName = partMapping[section];
-                const starPhrases = tempNotes[section].filter(n => n.type === 'star');
-                const finalNotes = tempNotes[section].filter(n => n.type === 'note' && n.fret <= 4).map(note => ({
-                    time: ticksToSeconds(note.tick), fret: note.fret,
-                    duration: ticksToSeconds(note.tick + note.durationTicks) - ticksToSeconds(note.tick),
-                    isStar: starPhrases.some(sp => note.tick >= sp.tick && note.tick < (sp.tick + sp.durationTicks))
-                }));
-                if (finalNotes.length > 0) {
-                    notesByTrack[trackName] = finalNotes.sort((a, b) => a.time - b.time);
-                    const [instrument, difficulty] = trackName.split(' - ');
-                    if (!availableParts[instrument]) availableParts[instrument] = [];
-                    availableParts[instrument].push(difficulty);
+
+        // Process notes for each track
+        for (const trackName in notesByTrack) {
+            const rawNotes = notesByTrack[trackName];
+            const starPhrases = rawNotes.filter(n => n.rawValue.startsWith('S 2')).map(n => ({
+                tick: n.tick,
+                durationTicks: parseInt(n.rawValue.split(' ')[2])
+            }));
+
+            const finalNotes = rawNotes.filter(n => n.rawValue.startsWith('N')).map(n => {
+                const parts = n.rawValue.split(' ');
+                const fret = parseInt(parts[1]);
+                const durationTicks = parseInt(parts[2]);
+                return {
+                    time: ticksToSeconds(n.tick),
+                    fret,
+                    duration: ticksToSeconds(n.tick + durationTicks) - ticksToSeconds(n.tick),
+                    isStar: starPhrases.some(sp => n.tick >= sp.tick && n.tick < (sp.tick + sp.durationTicks))
+                };
+            });
+            
+            if (finalNotes.length > 0) {
+                // Sanitize track name: "[ExpertSingle]" -> "ExpertSingle"
+                const cleanTrackName = trackName.substring(1, trackName.length - 1);
+                songData.notesByTrack[cleanTrackName] = finalNotes.sort((a,b) => a.time - b.time);
+                
+                // For now, just list all available tracks
+                if (!songData.availableParts[cleanTrackName]) {
+                    songData.availableParts[cleanTrackName] = finalNotes.length;
                 }
             }
-        });
-        return { notesByTrack, availableParts };
+            delete songData.notesByTrack[trackName]; // remove raw data
+        }
+        
+        return songData;
     };
+
 
     // --- UI Rendering ---
     const renderSongList = () => {
@@ -180,31 +216,48 @@ document.addEventListener('DOMContentLoaded', () => {
         songs.forEach(song => {
             const item = document.createElement('div');
             item.className = 'song-item';
-            item.innerHTML = `<b>${song.name}</b><br><small>${song.artist || 'Unknown Artist'}</small>`;
+            item.innerHTML = `<b>${song.name}</b>`; // Artist is now parsed from chart
             item.onclick = () => {
                 currentSongData = song;
-                gameElements.difficultySongTitle.textContent = `${song.name} - ${song.artist || 'Unknown'}`;
-                renderDifficultyOptions(song);
                 navigateTo('difficultySelect');
+                // Since we don't know difficulties until we parse, show a placeholder
+                gameElements.difficultySongTitle.textContent = "Loading difficulties...";
+                renderDifficultyOptions(song);
             };
             gameElements.songList.appendChild(item);
         });
     };
 
-    const renderDifficultyOptions = (songData) => {
+    const renderDifficultyOptions = async (songData) => {
         buttons.difficultyOptions.innerHTML = '';
-        // Mockup since parsing is now inside startGame
-        ['Expert', 'Hard', 'Medium', 'Easy'].forEach(diff => {
-            const btn = document.createElement('button');
-            btn.className = 'menu-btn';
-            btn.textContent = `Guitar - ${diff}`;
-            btn.onclick = () => startGame(songData, `Guitar - ${diff}`);
-            buttons.difficultyOptions.appendChild(btn);
-        });
+        try {
+            // We need to fetch and parse the chart here to know what difficulties are available
+            const chartResponse = await fetch(songData.chartUrl);
+            if (!chartResponse.ok) throw new Error('Could not fetch chart to list difficulties.');
+            const chartText = await chartResponse.text();
+            const parsedData = parseChart(chartText);
+
+            gameElements.difficultySongTitle.textContent = `${parsedData.metadata.Artist} - ${parsedData.metadata.Name}`;
+
+            if (Object.keys(parsedData.availableParts).length === 0) {
+                 buttons.difficultyOptions.innerHTML = '<li>No playable tracks found in chart file.</li>';
+                 return;
+            }
+
+            for (const partName in parsedData.availableParts) {
+                 const btn = document.createElement('button');
+                 btn.className = 'menu-btn';
+                 btn.textContent = partName;
+                 btn.onclick = () => startGame(songData, parsedData, partName);
+                 buttons.difficultyOptions.appendChild(btn);
+            }
+        } catch (error) {
+            console.error("Error rendering difficulties:", error);
+            alert("Could not load difficulty options for this song.");
+            navigateTo('songSelect');
+        }
     };
 
-    // --- GAMEPLAY ---
-    
     const cleanupAudio = () => {
         if (audioPlayers) {
             audioPlayers.dispose();
@@ -214,52 +267,51 @@ document.addEventListener('DOMContentLoaded', () => {
         Tone.Transport.cancel();
     };
 
-    const startGame = async (songData, trackKey) => {
+    // --- GAMEPLAY ---
+    const startGame = async (songInfo, parsedChart, trackKey) => {
         navigateTo('loading');
-
         try {
-            // STEP 1: Fetch and Parse Chart Data
-            updateLoadingText('Loading Song Data...');
-            const chartResponse = await fetch(songData.chartUrl);
-            if (!chartResponse.ok) throw new Error(`Network response was not ok for chart file. Status: ${chartResponse.status}`);
-            const chartText = await chartResponse.text();
-            
-            const parsedData = parseChart(chartText);
-            const notes = parsedData.notesByTrack[trackKey];
-            if (!notes || notes.length === 0) {
-                throw new Error(`The selected difficulty "${trackKey}" contains no notes or does not exist in the chart file.`);
-            }
-
-            // STEP 2: Load Audio
             updateLoadingText('Loading Audio...');
-            cleanupAudio(); // Ensure old players are gone
-            audioPlayers = new Tone.Players(songData.audioUrls).toDestination();
+            cleanupAudio();
+            
+            // Use MusicStream from chart metadata if available
+            const audioFile = parsedChart.metadata.MusicStream || 'song.ogg';
+            // Construct full URL relative to the *song's* directory, not the game's root
+            const audioUrl = new URL(audioFile, songInfo.chartUrl).href;
+            
+            audioPlayers = new Tone.Players({ 'song': audioUrl }).toDestination();
             await Tone.loaded();
 
-            // STEP 3: Load Visuals (can be done in parallel)
-            updateLoadingText('Loading Visuals...');
-            gameElements.background.style.backgroundImage = `url('${songData.backgroundUrl || ''}')`;
-            gameElements.albumArt.src = songData.albumArtUrl || ''; // Set album art
-            gameElements.songTitle.textContent = songData.name;
-            gameElements.songArtist.textContent = songData.artist || 'Unknown Artist';
+            updateLoadingText('Setting up visuals...');
+            const notes = parsedChart.notesByTrack[trackKey];
+            if (!notes || notes.length === 0) throw new Error(`Track "${trackKey}" has no notes.`);
+            
+            gameElements.background.style.backgroundImage = `url('${songInfo.backgroundUrl || ''}')`;
+            gameElements.albumArt.src = songInfo.albumArtUrl || '';
+            gameElements.songTitle.textContent = parsedChart.metadata.Name;
+            gameElements.songArtist.textContent = parsedChart.metadata.Artist;
 
-            // STEP 4: Final Setup and Countdown
             updateLoadingText('Starting Game...');
             resetGameState(notes);
+            
+            // Apply chart offset
+            const audioOffset = parsedChart.metadata.Offset || 0;
+            const startTime = Tone.now() + 1; // 1 second countdown
+            
+            Tone.Transport.start(startTime, audioOffset);
+            Object.values(audioPlayers.players).forEach(p => p.start(startTime));
 
             setTimeout(() => {
                 navigateTo('game');
                 gameState = 'playing';
-                Tone.Transport.start(Tone.now(), 0);
-                Object.values(audioPlayers.players).forEach(p => p.start());
                 gameLoopId = requestAnimationFrame(gameLoop);
-            }, SONG_START_DELAY_S * 1000);
+            }, 1000);
 
         } catch (error) {
             console.error("--- FATAL: Could not start game ---", error);
-            alert(`Failed to start game: ${error.message}\n\nThis can happen due to network issues or CORS policy on the server hosting the song files. Please check the console (F12) for more details.`);
-            cleanupAudio(); // Clean up on failure
-            navigateTo('songSelect'); // Go back to the menu
+            alert(`Failed to start game: ${error.message}`);
+            cleanupAudio();
+            navigateTo('songSelect');
         }
     };
     
@@ -280,23 +332,28 @@ document.addEventListener('DOMContentLoaded', () => {
             note.hit = false;
             note.missed = false;
         });
-
         updateUI();
     };
 
-    // --- GAME LOOP AND MECHANICS (remains largely the same) ---
     const gameLoop = () => {
         if (gameState !== 'playing') {
              cancelAnimationFrame(gameLoopId);
              return;
         }
         const currentTime = Tone.Transport.seconds;
+        
         activeTrack.notes.forEach(note => {
             const noteAppearanceTime = note.time - NOTE_FALL_DURATION_S;
-            if (!note.spawned && currentTime >= noteAppearanceTime) spawnNote(note);
+            if (!note.spawned && currentTime >= noteAppearanceTime) {
+                spawnNote(note);
+            } 
+            
             if (note.spawned && !note.hit && !note.missed) {
-                if (note.time - currentTime < -HIT_WINDOW_S) missNote(note);
-                else updateNotePosition(note, currentTime);
+                if (note.time - currentTime < -HIT_WINDOW_S) {
+                    missNote(note);
+                } else {
+                    updateNotePosition(note, currentTime);
+                }
             }
         });
         updateUI();
@@ -327,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         combo++;
         maxCombo = Math.max(maxCombo, combo);
         notesHit++;
-        multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), 3)];
+        multiplier = [1, 2, 3, 4][Math.min(Math.floor(combo / 10), 3)];
         score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
         rockMeter = Math.min(100, rockMeter + 2);
     };
@@ -381,6 +438,22 @@ document.addEventListener('DOMContentLoaded', () => {
         gameElements.rockMeterFill.style.backgroundColor = rockMeter < 25 ? 'var(--fret-red)' : rockMeter < 50 ? 'var(--fret-yellow)' : 'var(--fret-green)';
     };
 
+    const pauseGame = () => {
+        if(gameState !== 'playing') return;
+        gameState = 'paused';
+        Tone.Transport.pause();
+        cancelAnimationFrame(gameLoopId);
+        screens.pause.classList.add('active');
+    }
+
+    const resumeGame = () => {
+        if(gameState !== 'paused') return;
+        gameState = 'playing';
+        Tone.Transport.start();
+        gameLoopId = requestAnimationFrame(gameLoop);
+        screens.pause.classList.remove('active');
+    }
+
     // --- INITIALIZATION ---
     const initialize = () => {
         screens.splash.addEventListener('click', async () => {
@@ -389,18 +462,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }, { once: true });
         
         buttons.playSetlist.addEventListener('click', loadSetlist);
-        
-        // Setup other menu buttons
-        buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
+        buttons.backToMenu.addEventListener('click', () => navigateTo('songSelect'));
         getElement('back-to-song-select-btn').addEventListener('click', () => navigateTo('songSelect'));
         buttons.quit.addEventListener('click', () => quitGame(false));
-        buttons.resume.addEventListener('click', () => {}); // Pause/Resume not implemented in this version
+        buttons.resume.addEventListener('click', resumeGame);
         buttons.resultsBack.addEventListener('click', () => navigateTo('songSelect'));
 
-        // Keyboard listeners
         window.addEventListener('keydown', (e) => {
             if (e.repeat) return;
             const key = e.key.toLowerCase();
+            if (key === 'escape') {
+                if (gameState === 'playing') pauseGame();
+                else if (gameState === 'paused') resumeGame();
+            }
             if (KEY_MAPPING[key] !== undefined) handleFretPress(KEY_MAPPING[key]);
         });
         window.addEventListener('keyup', (e) => {
