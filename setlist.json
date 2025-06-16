@@ -1,11 +1,22 @@
 [
   {
     "name": "97' Bonnie & Clyde",
-    "artist": "Eminem",
     "albumArtUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/album.png",
+    "backgroundUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/background.png",
     "audioUrls": {
       "song": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ogg"
     },
-    "chartUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/notes.chart"
+    "chartUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/notes.chart",
+    "iniUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ini"
+  },
+  {
+    "name": "Another Song Example",
+    "albumArtUrl": "https://placehold.co/300x300/111/fff?text=No+Art",
+    "backgroundUrl": "https://images.unsplash.com/photo-1559825481-12a05cc00344?q=80&w=2070&auto=format&fit=crop",
+    "audioUrls": {
+      "song": "https://p.scdn.co/mp3-preview/b29a0b42a532721980333d596537672223c233a3?cid=774b29d4f13844c495f206cafdad9c86"
+    },
+    "chartUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/notes.chart",
+    "iniUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ini"
   }
 ]
