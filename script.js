@@ -1,373 +1,146 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // --- DOM Element Caching ---
+('DOMContentLoaded', () => {
+    // --- Caching DOM Elements for performance ---
+    const getElement = (id) => document.getElementById(id);
     const screens = {
-        splash: document.getElementById('splash-screen'),
-        mainMenu: document.getElementById('main-menu'),
-        songSelect: document.getElementById('song-select-screen'),
-        difficultySelect: document.getElementById('difficulty-select-screen'),
-        game: document.getElementById('game-container'),
-        loading: document.getElementById('loading-screen'),
-        pause: document.getElementById('pause-menu'),
-        results: document.getElementById('results-screen'),
+        splash: getElement('splash-screen'),
+        mainMenu: getElement('main-menu'),
+        songSelect: getElement('song-select-screen'),
+        difficultySelect: getElement('difficulty-select-screen'),
+        game: getElement('game-container'),
+        loading: getElement('loading-screen'),
+        pause: getElement('pause-menu'),
+        results: getElement('results-screen'),
     };
-
     const buttons = {
-        playGame: document.getElementById('play-game-btn'),
-        playSetlist: document.getElementById('play-setlist-btn'),
-        songFolderInput: document.getElementById('song-folder-input'),
-        backToMenu: document.getElementById('back-to-menu-btn'),
-        backToSongSelect: document.getElementById('back-to-song-select-btn'),
-        difficultyOptions: document.getElementById('difficulty-options'),
-        resume: document.getElementById('resume-btn'),
-        quit: document.getElementById('quit-btn'),
-        resultsBack: document.getElementById('results-back-btn'),
+        playGame: getElement('play-game-btn'),
+        playSetlist: getElement('play-setlist-btn'),
+        backToMenu: getElement('back-to-menu-btn'),
+        backToSongSelect: getElement('back-to-song-select-btn'),
+        difficultyOptions: getElement('difficulty-options'),
+        resume: getElement('resume-btn'),
+        quit: getElement('quit-btn'),
+        resultsBack: getElement('results-back-btn'),
     };
-    
     const gameElements = {
-        songCount: document.getElementById('song-count'),
-        songList: document.getElementById('song-list'),
-        difficultySongTitle: document.getElementById('difficulty-song-title'),
-        albumArt: document.getElementById('album-art'),
-        songTitle: document.getElementById('game-song-title'),
-        songArtist: document.getElementById('game-song-artist'),
-        score: document.getElementById('score'),
-        multiplier: document.getElementById('multiplier'),
-        combo: document.getElementById('combo'),
-        rockMeterFill: document.getElementById('rock-meter-fill'),
-        starPowerFill: document.getElementById('star-power-fill'),
-        noteContainer: document.getElementById('note-container'),
-        highway: document.getElementById('highway'),
+        songCount: getElement('song-count'),
+        songList: getElement('song-list'),
+        difficultySongTitle: getElement('difficulty-song-title'),
+        albumArt: getElement('album-art'),
+        songTitle: getElement('game-song-title'),
+        songArtist: getElement('game-song-artist'),
+        score: getElement('score'),
+        multiplier: getElement('multiplier'),
+        combo: getElement('combo'),
+        rockMeterFill: getElement('rock-meter-fill'),
+        starPowerFill: getElement('star-power-fill'),
+        noteContainer: getElement('note-container'),
+        highway: getElement('highway'),
+        feedbackContainer: getElement('feedback-container'),
         frets: document.querySelectorAll('.fret'),
-        loadingText: document.getElementById('loading-text'),
-        menuMusicCard: document.getElementById('menu-music-card'),
-        menuMusicAlbumArt: document.getElementById('menu-music-album-art'),
-        menuMusicTitle: document.getElementById('menu-music-title'),
-        menuMusicArtist: document.getElementById('menu-music-artist'),
-        menuMusicYear: document.getElementById('menu-music-year'),
-        resultsSongInfo: document.getElementById('results-song-info'),
-        resultsScore: document.getElementById('results-score'),
-        resultsNotesHit: document.getElementById('results-notes-hit'),
-        resultsTotalNotes: document.getElementById('results-total-notes'),
-        resultsAccuracy: document.getElementById('results-accuracy'),
-        resultsMaxCombo: document.getElementById('results-max-combo'),
+        loadingText: getElement('loading-text'),
+        resultsSongInfo: getElement('results-song-info'),
+        resultsScore: getElement('results-score'),
+        resultsNotesHit: getElement('results-notes-hit'),
+        resultsTotalNotes: getElement('results-total-notes'),
+        resultsAccuracy: getElement('results-accuracy'),
+        resultsMaxCombo: getElement('results-max-combo'),
     };
 
     // --- Game State & Configuration ---
     let songs = [];
     let currentSongData = null;
     let activeTrack = { notes: [], totalNotes: 0 };
-    let gameState = 'splash';
+    let gameState = 'splash'; // splash, mainMenu, loading, playing, paused, results
     let audioPlayers = null;
-    let menuMusicPlayer = null;
-    let activeNoteElements = [];
+    let gameLoopId = null;
 
+    // --- Gameplay Variables ---
     let score, combo, maxCombo, notesHit, multiplier, rockMeter, starPower;
     let isStarPowerActive = false;
-    
-    // IMPORTANT: This is a placeholder URL. Replace it with a link to your own setlist.json file.
-    // The file should be hosted on a service that supports CORS (like GitHub Gist, Backblaze B2, etc.)
-    const SETLIST_URL = 'setlist.json';
+    let heldFrets = [false, false, false, false, false];
+    let activeSustain = [null, null, null, null, null];
 
-    const NOTE_SPEED_MS = 1500;
-    const HIT_WINDOW_MS = 85;
+    const SETLIST_URL = 'setlist.json';
+    const NOTE_FALL_DURATION_S = 1.5; // Time in seconds for a note to fall
+    const HIT_WINDOW_S = 0.085; // 85ms timing window
     const KEY_MAPPING = { 'a': 0, 's': 1, 'd': 2, 'k': 3, 'l': 4, ' ': 'sp' };
-    const MULTIPLIER_STAGES = [1, 2, 3, 4, 8];
-    const NOTES_PER_MULTIPLIER = 10;
-    const MENU_MUSIC = [
-        { title: "Enter Sandman", artist: "Metallica", year: "1991", url: "https://p.scdn.co/mp3-preview/b29a0b42a532721980333d596537672223c233a3?cid=774b29d4f13844c495f206cafdad9c86" },
-        { title: "Welcome to the Jungle", artist: "Guns N' Roses", year: "1987", url: "https://p.scdn.co/mp3-preview/a392a81977579c3af7b822d56a3196903a450518?cid=774b29d4f13844c495f206cafdad9c86" },
-    ];
     const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange'];
+    const MULTIPLIER_STAGES = [1, 2, 3, 4];
+    const NOTES_PER_MULTIPLIER = 10;
     
     // --- Core Game Flow & Screen Navigation ---
     function navigateTo(screenName) {
         Object.values(screens).forEach(s => s.classList.remove('active'));
         screens[screenName]?.classList.add('active');
         gameState = screenName;
-        if(screenName === 'game') gameState = 'playing';
     }
 
-    screens.splash.addEventListener('click', async () => {
-        await Tone.start();
-        navigateTo('mainMenu');
-        playMenuMusic();
-    }, { once: true });
-    
-    buttons.playGame.addEventListener('click', () => songs.length > 0 && navigateTo('songSelect'));
-    buttons.playSetlist.addEventListener('click', loadSetlist);
-    buttons.songFolderInput.addEventListener('change', handleSongFolderSelect);
-    buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
-    buttons.backToSongSelect.addEventListener('click', () => navigateTo('songSelect'));
-    buttons.quit.addEventListener('click', endGame);
-    buttons.resume.addEventListener('click', resumeGame);
-    buttons.resultsBack.addEventListener('click', () => navigateTo('songSelect'));
-
-    // --- Menu Music ---
-    function playMenuMusic() {
-        if (menuMusicPlayer?.state === 'started' || gameState !== 'mainMenu') return;
-        const randomSong = MENU_MUSIC[Math.floor(Math.random() * MENU_MUSIC.length)];
+    async function initialize() {
+        screens.splash.addEventListener('click', async () => {
+            await Tone.start();
+            console.log("AudioContext started");
+            navigateTo('mainMenu');
+        }, { once: true });
         
-        menuMusicPlayer = new Tone.Player(randomSong.url).toDestination();
-        menuMusicPlayer.loop = true;
-        menuMusicPlayer.autostart = true;
-        menuMusicPlayer.onerror = () => { setTimeout(playMenuMusic, 500); };
+        buttons.playGame.addEventListener('click', () => songs.length > 0 && navigateTo('songSelect'));
+        buttons.playSetlist.addEventListener('click', loadSetlist);
+        buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
+        buttons.backToSongSelect.addEventListener('click', () => navigateTo('songSelect'));
+        buttons.quit.addEventListener('click', quitGame);
+        buttons.resume.addEventListener('click', resumeGame);
+        buttons.resultsBack.addEventListener('click', () => {
+            renderSongList();
+            navigateTo('songSelect');
+        });
 
-        gameElements.menuMusicTitle.textContent = randomSong.title;
-        gameElements.menuMusicArtist.textContent = randomSong.artist;
-        gameElements.menuMusicYear.textContent = randomSong.year;
-        gameElements.menuMusicAlbumArt.style.backgroundImage = `url(https://placehold.co/80x80/111111/ffffff?text=${randomSong.artist.charAt(0)})`;
-        gameElements.menuMusicCard.classList.add('visible');
+        setupInputListeners();
     }
 
-    // --- Remote Setlist Loading ---
+    // --- Setlist & Song Parsing ---
     async function loadSetlist() {
         navigateTo('loading');
-        gameElements.loadingText.textContent = 'Fetching setlist...';
+        gameElements.loadingText.textContent = 'Fetching online setlist...';
         try {
             const response = await fetch(SETLIST_URL);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const setlist = await response.json();
-
             gameElements.loadingText.textContent = `Loading ${setlist.length} song(s)...`;
-            const parsePromises = setlist.map(parseRemoteSong);
-            const parsedSongs = (await Promise.all(parsePromises)).filter(Boolean);
-
-            songs = [...parsedSongs];
+            
+            const songPromises = setlist.map(parseRemoteSong);
+            const loadedSongs = (await Promise.all(songPromises)).filter(Boolean); // Filter out nulls from failed parses
+            
+            songs = [...loadedSongs]; // Replace local songs with the setlist
             if (songs.length > 0) {
                  buttons.playGame.disabled = false;
-                 gameElements.songCount.textContent = `${songs.length} song${songs.length !== 1 ? 's' : ''} from setlist`;
+                 gameElements.songCount.textContent = `${songs.length} song${songs.length > 1 ? 's' : ''} loaded`;
                  renderSongList();
                  navigateTo('songSelect');
             } else {
-                gameElements.songCount.textContent = 'Could not load setlist.';
-                navigateTo('mainMenu');
+                throw new Error("No songs could be loaded from the setlist.");
             }
         } catch (error) {
             console.error("Could not load setlist:", error);
             gameElements.songCount.textContent = 'Error loading setlist.';
-            navigateTo('mainMenu');
+            navigateTo('mainMenu'); // Go back to menu on error
         }
     }
 
     async function parseRemoteSong(songData) {
         try {
-            const song = {
-                name: songData.name,
-                artist: songData.artist,
-                albumArtUrl: songData.albumArtUrl,
-                audioUrls: songData.audioUrls,
-                notesByTrack: {},
-                availableParts: {}
+            console.log(`Parsing: ${songData.name}`);
+            const chartResponse = await fetch(songData.chartUrl);
+            if (!chartResponse.ok) throw new Error(`Failed to fetch chart: ${songData.chartUrl}`);
+            const chartText = await chartResponse.text();
+            
+            const parsedChart = parseChart(chartText);
+            return {
+                ...songData,
+                ...parsedChart
             };
-
-            if (songData.chartUrl) {
-                const chartResponse = await fetch(songData.chartUrl);
-                if (!chartResponse.ok) throw new Error(`Failed to fetch chart: ${songData.chartUrl}`);
-                
-                if (songData.chartUrl.toLowerCase().endsWith('.chart')) {
-                    const chartText = await chartResponse.text();
-                    Object.assign(song, parseChart(chartText));
-                } else if (songData.chartUrl.toLowerCase().endsWith('.mid')) {
-                    const chartBuffer = await chartResponse.arrayBuffer();
-                    Object.assign(song, parseMidi(chartBuffer));
-                }
-            } else {
-                 return null;
-            }
-
-            if (Object.keys(song.availableParts).length === 0) {
-                 return null;
-            }
-            return song;
         } catch (error) {
             console.error(`Failed to parse remote song "${songData.name}":`, error);
             return null;
         }
-    }
-
-
-    // --- Local Song Loading ---
-    async function handleSongFolderSelect(event) {
-        navigateTo('loading');
-        gameElements.loadingText.textContent = 'Parsing song files...';
-        const files = Array.from(event.target.files);
-        const folders = {};
-        files.forEach(file => {
-            const folderName = file.webkitRelativePath.split('/')[0];
-            if (!folders[folderName]) folders[folderName] = [];
-            folders[folderName].push(file);
-        });
-
-        const parsePromises = Object.values(folders).map(parseSongFolder);
-        const parsedSongs = (await Promise.all(parsePromises)).filter(Boolean);
-        
-        songs.push(...parsedSongs);
-        gameElements.songCount.textContent = `${songs.length} song${songs.length !== 1 ? 's' : ''} loaded`;
-        buttons.playGame.disabled = songs.length === 0;
-        renderSongList();
-        navigateTo(songs.length > 0 ? 'songSelect' : 'mainMenu');
-    }
-
-    async function parseSongFolder(files) {
-        try {
-            const song = { name: files[0].webkitRelativePath.split('/')[0], artist: 'Unknown', year: 'N/A', albumArtUrl: 'https://placehold.co/300x300/111/fff?text=No+Art', audioUrls: {}, notesByTrack: {}, availableParts: {} };
-            
-            const iniFile = files.find(f => f.name.toLowerCase() === 'song.ini');
-            if (iniFile) Object.assign(song, parseIni(await iniFile.text()));
-
-            const artFile = files.find(f => f.name.toLowerCase().match(/album\.(jpg|jpeg|png)$/));
-            if (artFile) song.albumArtUrl = URL.createObjectURL(artFile);
-            
-            files.filter(f => f.name.endsWith('.opus') || f.name.endsWith('.ogg') || f.name.endsWith('.mp3')).forEach(f => {
-                const stemName = f.name.substring(0, f.name.lastIndexOf('.'));
-                song.audioUrls[stemName] = URL.createObjectURL(f);
-            });
-
-            const chartFile = files.find(f => f.name.toLowerCase() === 'notes.chart');
-            const midiFile = files.find(f => f.name.toLowerCase() === 'notes.mid');
-
-            if (chartFile) {
-                const chartData = await chartFile.text();
-                Object.assign(song, parseChart(chartData));
-            } else if (midiFile) {
-                const midiData = await midiFile.arrayBuffer();
-                Object.assign(song, parseMidi(midiData));
-            } else {
-                 return null;
-            }
-            
-            if (Object.keys(song.availableParts).length === 0 || Object.keys(song.audioUrls).length === 0) {
-                 return null;
-            }
-            return song;
-        } catch (error) { console.error("Failed to parse song folder:", error); return null; }
-    }
-
-    function parseIni(text) {
-        const data = {};
-        const sectionMatch = text.match(/\[song\]\s*([\s\S]*?)(?=\s*\[|$)/i);
-        if (sectionMatch) {
-            sectionMatch[1].split(/\r?\n/).forEach(line => {
-                const eqIndex = line.indexOf('=');
-                if (eqIndex > -1) {
-                    const key = line.substring(0, eqIndex).trim().toLowerCase();
-                    const val = line.substring(eqIndex + 1).trim();
-                    if (key && val) data[key] = val;
-                }
-            });
-        }
-        return data;
-    }
-    
-    function parseMidi(arrayBuffer) {
-        const midi = MidiParser.parse(arrayBuffer);
-        const resolution = midi.timeDivision;
-        const notesByTrack = {};
-        const availableParts = {};
-
-        const tempoEvents = [];
-        midi.track.forEach(track => {
-            let currentTick = 0;
-            track.event.forEach(event => {
-                currentTick += event.deltaTime;
-                if (event.metaType === 81) {
-                    tempoEvents.push({
-                        tick: currentTick,
-                        bpm: 60000000 / ((event.data[0] << 16) | (event.data[1] << 8) | event.data[2])
-                    });
-                }
-            });
-        });
-        tempoEvents.sort((a,b) => a.tick - b.tick);
-    
-        const syncTrack = [];
-        let lastBpm = 120; let lastTick = 0; let timeAtLastBpm = 0;
-        if (tempoEvents.length === 0 || tempoEvents[0].tick > 0) {
-            syncTrack.push({ tick: 0, bpm: 120, time: 0 });
-        }
-    
-        tempoEvents.forEach(bpmEvent => {
-            const ticksSinceLast = bpmEvent.tick - lastTick;
-            timeAtLastBpm += (ticksSinceLast / resolution) * (60 / lastBpm);
-            bpmEvent.time = timeAtLastBpm;
-            syncTrack.push(bpmEvent);
-            lastTick = bpmEvent.tick;
-            lastBpm = bpmEvent.bpm;
-        });
-    
-        const ticksToSeconds = (ticks) => {
-            let time = 0; let lastTick = 0; let lastBpm = 120;
-            const relevantEvent = [...syncTrack].reverse().find(e => e.tick <= ticks);
-            if (relevantEvent) {
-                time = relevantEvent.time;
-                lastTick = relevantEvent.tick;
-                lastBpm = relevantEvent.bpm;
-            }
-            time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
-            return time;
-        };
-        
-        const trackMappings = {
-            'PART GUITAR': {
-                name: 'Guitar',
-                difficulties: {
-                    'Expert': { base: 96, name: 'Guitar - Expert' }, 'Hard': { base: 84, name: 'Guitar - Hard' }, 'Medium': { base: 72, name: 'Guitar - Medium' }, 'Easy': { base: 60, name: 'Guitar - Easy' }
-                }
-            },
-            'PART BASS': {
-                name: 'Bass',
-                difficulties: {
-                    'Expert': { base: 96, name: 'Bass - Expert' }, 'Hard': { base: 84, name: 'Bass - Hard' }, 'Medium': { base: 72, name: 'Bass - Medium' }, 'Easy': { base: 60, name: 'Bass - Easy' }
-                }
-            }
-        };
-        const STAR_POWER_NOTE = 116;
-
-        midi.track.forEach(track => {
-            const trackNameEvent = track.event.find(e => e.metaType === 3);
-            const trackName = trackNameEvent ? trackNameEvent.data : '';
-            const mapping = trackMappings[trackName];
-
-            if (!mapping) return;
-
-            let currentTick = 0;
-            const notes = [];
-            const activeNotes = {};
-
-            track.event.forEach(event => {
-                currentTick += event.deltaTime;
-                const type = event.type;
-                if (type === 9 && event.data[1] > 0) {
-                    activeNotes[event.data[0]] = { tick: currentTick, note: event.data[0] };
-                } else if (type === 8 || (type === 9 && event.data[1] === 0)) {
-                    const startNote = activeNotes[event.data[0]];
-                    if (startNote) {
-                        notes.push({ tick: startNote.tick, midiNote: startNote.note, duration: currentTick - startNote.tick });
-                        delete activeNotes[event.data[0]];
-                    }
-                }
-            });
-
-            const starPhrases = notes.filter(n => n.midiNote === STAR_POWER_NOTE).map(n => ({ tick: n.tick, type: 'star', duration: n.duration }));
-
-            Object.values(mapping.difficulties).forEach(diff => {
-                const difficultyNotes = notes
-                    .filter(n => n.midiNote >= diff.base && n.midiNote < diff.base + 5)
-                    .map(n => ({
-                        tick: n.tick, fret: n.midiNote - diff.base, duration: n.duration, time: ticksToSeconds(n.tick),
-                        isStar: starPhrases.some(sp => n.tick >= sp.tick && n.tick < (sp.tick + sp.duration))
-                    }));
-                
-                if (difficultyNotes.length > 0) {
-                    notesByTrack[diff.name] = difficultyNotes.sort((a, b) => a.time - b.time);
-                    const [instrument, difficulty] = diff.name.split(' - ');
-                    availableParts[instrument] = availableParts[instrument] || [];
-                    availableParts[instrument].push(difficulty);
-                }
-            });
-        });
-        
-        return { notesByTrack, availableParts };
     }
 
     function parseChart(chartText) {
@@ -380,77 +153,92 @@ document.addEventListener('DOMContentLoaded', () => {
         const syncTrack = [];
 
         const partMapping = {
-            '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy',
-            '[ExpertGuitar]': 'Guitar - Expert', '[HardGuitar]': 'Guitar - Hard', '[MediumGuitar]': 'Guitar - Medium', '[EasyGuitar]': 'Guitar - Easy',
-            '[ExpertDoubleBass]': 'Bass - Expert', '[HardDoubleBass]': 'Bass - Hard', '[MediumDoubleBass]': 'Bass - Medium', '[EasyDoubleBass]': 'Bass - Easy',
-            '[ExpertBass]': 'Bass - Expert', '[HardBass]': 'Bass - Hard', '[MediumBass]': 'Bass - Medium', '[EasyBass]': 'Bass - Easy'
+            '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard',
+            '[ExpertBass]': 'Bass - Expert', '[HardBass]': 'Bass - Hard',
         };
 
+        // First pass: get sync track and resolution
         lines.forEach(line => {
             line = line.trim();
-            if (line.startsWith('[') && line.endsWith(']')) {
-                currentSection = line;
-                if (!notesByTrack[currentSection]) notesByTrack[currentSection] = [];
-            } else if (line.includes('=')) {
-                const parts = line.split('=').map(s => s.trim());
-                const key = parts[0];
-                const val = parts[1];
-                if (currentSection === '[Song]') {
-                    if (key === 'Resolution') resolution = parseFloat(val);
-                } else if (currentSection === '[SyncTrack]') {
-                    const eventParts = key.split(' ').filter(Boolean);
-                    if (eventParts[1] === 'B') {
-                        syncTrack.push({ tick: parseInt(eventParts[0]), bpm: parseInt(val) / 1000 });
-                    }
-                } else if (notesByTrack[currentSection]) {
-                     const eventParts = key.split(' ').filter(Boolean);
-                     if (eventParts[1] === 'N') {
-                        notesByTrack[currentSection].push({
-                            tick: parseInt(eventParts[0]), fret: parseInt(eventParts[2]), duration: parseInt(val),
-                        });
-                     } else if (eventParts[1] === 'S' && eventParts[2] === '2') {
-                          notesByTrack[currentSection].push({
-                            tick: parseInt(eventParts[0]), type: 'star', duration: parseInt(val),
-                        });
-                     }
+            if (line.startsWith('[') && line.endsWith(']')) currentSection = line;
+            if (line.includes('=')) {
+                const [key, val] = line.split('=').map(s => s.trim());
+                if (currentSection === '[Song]' && key === 'Resolution') resolution = parseFloat(val);
+                if (currentSection === '[SyncTrack]') {
+                    const [tick, type, value] = key.split(' ').filter(Boolean);
+                    if (type === 'B') syncTrack.push({ tick: parseInt(tick), bpm: parseInt(value) / 1000 });
                 }
             }
         });
 
         syncTrack.sort((a,b) => a.tick - b.tick);
-        let lastBpm = 120; let lastTick = 0; let timeAtLastBpm = 0;
-        syncTrack.forEach(bpmEvent => {
-            const ticksSinceLast = bpmEvent.tick - lastTick;
-            timeAtLastBpm += (ticksSinceLast / resolution) * (60 / lastBpm);
-            bpmEvent.time = timeAtLastBpm;
-            lastTick = bpmEvent.tick;
-            lastBpm = bpmEvent.bpm;
+        let time = 0;
+        let lastTick = 0;
+        let lastBpm = 120;
+        if(syncTrack.length > 0) lastBpm = syncTrack[0].bpm;
+
+        const timeMap = [{ tick: 0, time: 0, bpm: lastBpm }];
+        syncTrack.forEach(event => {
+            const deltaTicks = event.tick - lastTick;
+            time += (deltaTicks / resolution) * (60 / lastBpm);
+            timeMap.push({ tick: event.tick, time: time, bpm: event.bpm });
+            lastTick = event.tick;
+            lastBpm = event.bpm;
         });
 
         const ticksToSeconds = (ticks) => {
-            let time = 0; let lastTick = 0; let lastBpm = 120;
-            const relevantEvent = [...syncTrack].reverse().find(e => e.tick <= ticks);
-            if(relevantEvent){
-                 time = relevantEvent.time; lastTick = relevantEvent.tick; lastBpm = relevantEvent.bpm;
-            }
-            time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
-            return time;
+            const lastEvent = timeMap.filter(e => e.tick <= ticks).pop();
+            const deltaTicks = ticks - lastEvent.tick;
+            return lastEvent.time + (deltaTicks / resolution) * (60 / lastEvent.bpm);
         };
-        
-        Object.keys(partMapping).forEach(section => {
-            if(notesByTrack[section]?.length > 0){
-                const sectionNotes = notesByTrack[section].filter(n => n.type !== 'star');
-                const starPhrases = notesByTrack[section].filter(n => n.type === 'star');
-                
-                sectionNotes.forEach(note => {
-                    note.time = ticksToSeconds(note.tick);
-                    note.isStar = starPhrases.some(sp => note.tick >= sp.tick && note.tick < sp.tick + sp.duration);
-                });
 
-                notesByTrack[partMapping[section]] = sectionNotes.sort((a,b) => a.time - b.time);
+        // Second pass: get notes
+        lines.forEach(line => {
+            line = line.trim();
+            if (line.startsWith('[') && line.endsWith(']')) {
+                currentSection = line;
+                if(partMapping[currentSection] && !notesByTrack[currentSection]) {
+                    notesByTrack[currentSection] = [];
+                }
+            }
+            if (notesByTrack[currentSection] && line.includes('=')) {
+                const [key, val] = line.split('=').map(s => s.trim());
+                const [tick, type, fret, ...rest] = key.split(' ').filter(Boolean);
+                
+                if (type === 'N') { // Note
+                    notesByTrack[currentSection].push({
+                        tick: parseInt(tick),
+                        fret: parseInt(fret),
+                        durationTicks: parseInt(val),
+                        time: ticksToSeconds(parseInt(tick)),
+                        duration: ticksToSeconds(parseInt(tick) + parseInt(val)) - ticksToSeconds(parseInt(tick)),
+                        isStar: false,
+                    });
+                } else if (type === 'S' && fret === '2') { // Star Power Phrase
+                     notesByTrack[currentSection].push({
+                        type: 'star',
+                        tick: parseInt(tick),
+                        durationTicks: parseInt(val),
+                    });
+                }
+            }
+        });
+
+        // Final processing: map sections, assign star power, create parts
+        Object.keys(partMapping).forEach(section => {
+            if(notesByTrack[section]?.length > 0) {
+                const trackName = partMapping[section];
+                const starPhrases = notesByTrack[section].filter(n => n.type === 'star');
+                const finalNotes = notesByTrack[section].filter(n => n.type !== 'star');
+
+                finalNotes.forEach(note => {
+                    note.isStar = starPhrases.some(sp => note.tick >= sp.tick && note.tick < (sp.tick + sp.durationTicks));
+                });
+                
+                notesByTrack[trackName] = finalNotes.sort((a,b) => a.time - b.time);
                 delete notesByTrack[section];
-                const [instrument, difficulty] = partMapping[section].split(' - ');
-                availableParts[instrument] = availableParts[instrument] || [];
+                const [instrument, difficulty] = trackName.split(' - ');
+                if(!availableParts[instrument]) availableParts[instrument] = [];
                 availableParts[instrument].push(difficulty);
             }
         });
@@ -461,10 +249,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- UI Rendering ---
     function renderSongList() {
         gameElements.songList.innerHTML = '';
-        songs.sort((a, b) => a.name.localeCompare(b.name)).forEach(song => {
+        songs.sort((a, b) => a.name.localeCompare(b.name)).forEach((song, index) => {
             const item = document.createElement('div');
             item.className = 'song-item';
-            item.innerHTML = `<b>${song.name}</b><br>${song.artist || 'Unknown Artist'}`;
+            item.innerHTML = `<b>${song.name}</b><br><small>${song.artist || 'Unknown Artist'}</small>`;
             item.onclick = () => {
                 currentSongData = song;
                 gameElements.difficultySongTitle.textContent = `${song.artist} - ${song.name}`;
@@ -494,38 +282,54 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startGame(trackKey) {
         navigateTo('loading');
         gameElements.loadingText.textContent = 'Loading audio...';
-        
+
         await Tone.Transport.cancel();
         await Tone.Transport.stop();
-        if (menuMusicPlayer) {
-             menuMusicPlayer.stop();
-             menuMusicPlayer.dispose();
-             menuMusicPlayer = null;
-        }
-        if(audioPlayers) await audioPlayers.dispose();
+        if (audioPlayers) audioPlayers.dispose();
         
+        // Deep copy notes to prevent modification of original data
         activeTrack.notes = JSON.parse(JSON.stringify(currentSongData.notesByTrack[trackKey]));
-        activeTrack.totalNotes = activeTrack.notes.length;
-        
-        gameElements.albumArt.src = currentSongData.albumArtUrl;
+        activeTrack.totalNotes = activeTrack.notes.filter(n => n.fret <= 4).length; // Only count playable notes
+
+        gameElements.albumArt.src = currentSongData.albumArtUrl || 'https://placehold.co/300x300/111/fff?text=No+Art';
         gameElements.songTitle.textContent = currentSongData.name;
         gameElements.songArtist.textContent = currentSongData.artist;
+
+        audioPlayers = new Tone.Players(currentSongData.audioUrls).toDestination();
         
-        audioPlayers = new Tone.Players(currentSongData.audioUrls, () => {
-            Object.values(audioPlayers.players).forEach(p => p.toDestination());
-            resetGameState();
+        // Wait for all audio files to be loaded
+        await Tone.loaded();
+        
+        gameElements.loadingText.textContent = 'Ready!';
+        resetGameState();
+        
+        // Short delay before starting
+        setTimeout(() => {
             navigateTo('game');
-            Tone.Transport.start('+0.5');
+            Tone.Transport.start(Tone.now(), 0); // Start transport precisely at 0
             gameLoopId = requestAnimationFrame(gameLoop);
-        }).toDestination();
+            Object.values(audioPlayers.players).forEach(p => p.start(Tone.now()));
+        }, 500);
     }
     
     function resetGameState() {
-        activeNoteElements = [];
         score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
+        heldFrets = [false, false, false, false, false];
+        activeSustain = [null, null, null, null, null];
+        
         gameElements.highway.classList.remove('star-power-active');
-        gameElements.noteContainer.innerHTML = '';
+        gameElements.noteContainer.innerHTML = ''; // Clear previous notes
+        
+        // Reset notes state for re-playability
+        activeTrack.notes.forEach(note => {
+            note.spawned = false;
+            note.hit = false;
+            note.missed = false;
+            if (note.element) note.element.remove();
+            note.element = null;
+        });
+
         updateUI();
     }
 
@@ -534,107 +338,152 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelAnimationFrame(gameLoopId);
             return;
         }
+
         const currentTime = Tone.Transport.seconds;
         
+        // Spawn upcoming notes
         activeTrack.notes.forEach(note => {
-            if (!note.spawned && note.time - currentTime < (NOTE_SPEED_MS / 1000)) {
+            if (!note.spawned && note.time - currentTime < NOTE_FALL_DURATION_S) {
                 spawnNote(note);
-                note.spawned = true;
             }
         });
-        
-        for (let i = activeNoteElements.length - 1; i >= 0; i--) {
-            const noteData = activeNoteElements[i];
-            const timeUntilHit = noteData.time - currentTime;
-            
-            if (timeUntilHit < -(HIT_WINDOW_MS / 1000) && !noteData.hit && !noteData.missed) {
-                missNote(noteData);
-                activeNoteElements.splice(i, 1);
+
+        // Update positions and check for misses
+        const notesOnScreen = activeTrack.notes.filter(n => n.spawned && !n.hit && !n.missed);
+        for (const note of notesOnScreen) {
+            const timeUntilHit = note.time - currentTime;
+
+            if (timeUntilHit < -HIT_WINDOW_S) {
+                missNote(note);
             } else {
-                const progress = 1 - (timeUntilHit / (NOTE_SPEED_MS / 1000));
-                noteData.element.style.transform = `translateY(${progress * 105}vh) translateZ(0)`;
+                const progress = 1 - (timeUntilHit / NOTE_FALL_DURATION_S);
+                note.element.style.transform = `translateY(${progress * 100}vh)`;
             }
         }
         
+        // Update sustain trails
+        for(let i = 0; i < 5; i++) {
+            if(activeSustain[i]) {
+                const sustainNote = activeSustain[i];
+                const sustainEnd = sustainNote.time + sustainNote.duration;
+                if(currentTime >= sustainEnd || !heldFrets[i]){
+                    activeSustain[i] = null; // Stop sustaining
+                } else {
+                     // Update sustain score
+                    score += 1;
+                }
+            }
+        }
+
+
+        updateUI(); // Update score, combo etc. continuously
         gameLoopId = requestAnimationFrame(gameLoop);
     }
     
-    function spawnNote(noteData) {
+    function spawnNote(note) {
+        note.spawned = true;
         const noteEl = document.createElement('div');
-        noteEl.className = 'note';
+        noteEl.className = `note ${FRET_COLORS[note.fret]}`;
+        if(note.isStar) noteEl.classList.add('star-power');
+        noteEl.style.left = `${note.fret * 20}%`;
+        
         const gem = document.createElement('div');
         gem.className = 'note-gem';
         noteEl.appendChild(gem);
         
-        noteEl.classList.add(FRET_COLORS[noteData.fret]);
-        if(noteData.isStar) noteEl.classList.add('star-power');
+        // Handle sustain trails
+        if (note.duration > 0.1) { // Only add trail for notes longer than a tap
+            const trail = document.createElement('div');
+            trail.className = 'sustain-trail';
+            
+            // Calculate height based on duration and fall speed
+            const fallSpeed = 100 / NOTE_FALL_DURATION_S; // vh per second
+            trail.style.height = `${note.duration * fallSpeed}vh`;
+            noteEl.appendChild(trail);
+        }
 
-        noteEl.style.left = `${noteData.fret * 20}%`;
-        
-        noteData.element = noteEl;
-        activeNoteElements.push(noteData);
+        note.element = noteEl;
         gameElements.noteContainer.appendChild(noteEl);
-        
-        setTimeout(() => { if (noteData.element.parentElement) noteData.element.remove(); }, NOTE_SPEED_MS + 200);
     }
 
     function handleFretPress(fretIndex) {
-        if (gameState !== 'playing') return;
+        heldFrets[fretIndex] = true;
         gameElements.frets[fretIndex].classList.add('active');
+
+        if (gameState !== 'playing') return;
         
         const currentTime = Tone.Transport.seconds;
-        const hitWindowSec = HIT_WINDOW_MS / 1000;
-        let noteToHit = null;
+        
+        // Find the earliest hittable note for this fret
+        const hittableNotes = activeTrack.notes.filter(note =>
+            !note.hit && !note.missed && note.fret === fretIndex && Math.abs(note.time - currentTime) <= HIT_WINDOW_S
+        );
 
-        for (const note of activeNoteElements) {
-            if (note.fret === fretIndex && !note.hit && !note.missed) {
-                if (Math.abs(note.time - currentTime) <= hitWindowSec) {
-                    if(!noteToHit || Math.abs(note.time - currentTime) < Math.abs(noteToHit.time - currentTime)) {
-                       noteToHit = note;
-                    }
-                }
-            }
+        if (hittableNotes.length > 0) {
+            const noteToHit = hittableNotes.sort((a, b) => a.time - b.time)[0];
+            hitNote(noteToHit);
         }
-        if (noteToHit) hitNote(noteToHit);
     }
-    
+
     function handleFretRelease(fretIndex) {
-         gameElements.frets[fretIndex].classList.remove('active');
+        heldFrets[fretIndex] = false;
+        gameElements.frets[fretIndex].classList.remove('active');
+        if(activeSustain[fretIndex]){
+             activeSustain[fretIndex] = null;
+        }
     }
 
     function hitNote(note) {
         note.hit = true;
-        note.element.classList.add('hit');
-        const index = activeNoteElements.findIndex(n => n === note);
-        if(index > -1) activeNoteElements.splice(index, 1);
+        note.element.classList.add('hidden'); // Hide the note instead of removing
         
-        setTimeout(() => { if(note.element.parentElement) note.element.remove() }, 200);
+        showFeedback("Perfect!");
 
         combo++;
         if (combo > maxCombo) maxCombo = combo;
         notesHit++;
-        multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1)];
-        score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
-        rockMeter = Math.min(100, rockMeter + 1);
-        if (note.isStar) starPower = Math.min(100, starPower + 3);
         
-        updateUI();
+        const multIndex = Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1);
+        multiplier = MULTIPLIER_STAGES[multIndex];
+        
+        score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
+        rockMeter = Math.min(100, rockMeter + 2);
+        if (note.isStar) starPower = Math.min(100, starPower + 5);
+        
+        // Start sustaining if it's a long note
+        if (note.duration > 0.1) {
+            activeSustain[note.fret] = note;
+        }
     }
 
     function missNote(note) {
-        if(note.hit) return;
         note.missed = true;
-        note.element.remove();
+        note.element.classList.add('hidden');
+        showFeedback("Miss");
 
         combo = 0;
         multiplier = 1;
         rockMeter = Math.max(0, rockMeter - 8);
         
         if (rockMeter <= 0) {
-            endGame(true);
-            return;
+            quitGame(true); // Failed the song
         }
-        updateUI();
+    }
+    
+    function showFeedback(text) {
+        const feedbackEl = document.createElement('div');
+        feedbackEl.className = 'feedback-text';
+        feedbackEl.textContent = text;
+        
+        // Set color based on text
+        if(text.toLowerCase().includes('miss')) {
+            feedbackEl.style.color = 'var(--fret-red)';
+        } else {
+             feedbackEl.style.color = 'var(--accent-blue)';
+        }
+
+        gameElements.feedbackContainer.appendChild(feedbackEl);
+        setTimeout(() => feedbackEl.remove(), 500);
     }
     
     function activateStarPower() {
@@ -642,22 +491,18 @@ document.addEventListener('DOMContentLoaded', () => {
         isStarPowerActive = true;
         gameElements.highway.classList.add('star-power-active');
         
+        const spDuration = 8000; // 8 seconds
+        const drainPerInterval = (100 / spDuration) * 100;
+        
         const drainInterval = setInterval(() => {
-            if (!isStarPowerActive || gameState !== 'playing') {
-                isStarPowerActive = false;
-                gameElements.highway.classList.remove('star-power-active');
-                clearInterval(drainInterval);
-                return;
-            }
-            starPower -= 1;
+            starPower -= drainPerInterval / 100;
             if (starPower <= 0) {
                 starPower = 0;
                 isStarPowerActive = false;
                 gameElements.highway.classList.remove('star-power-active');
                 clearInterval(drainInterval);
             }
-            updateUI();
-        }, 80);
+        }, 100);
     }
 
     function updateUI() {
@@ -665,9 +510,15 @@ document.addEventListener('DOMContentLoaded', () => {
         gameElements.combo.textContent = combo;
         gameElements.multiplier.textContent = `${isStarPowerActive ? multiplier * 2 : multiplier}x`;
         gameElements.rockMeterFill.style.width = `${rockMeter}%`;
+        // Change rock meter color based on value
+        if (rockMeter < 25) gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-red)';
+        else if (rockMeter < 50) gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-yellow)';
+        else gameElements.rockMeterFill.style.backgroundColor = 'var(--fret-green)';
+        
         gameElements.starPowerFill.style.width = `${starPower}%`;
     }
 
+    // --- Game State Control ---
     function pauseGame() {
         if (gameState !== 'playing') return;
         Tone.Transport.pause();
@@ -684,23 +535,22 @@ document.addEventListener('DOMContentLoaded', () => {
         gameLoopId = requestAnimationFrame(gameLoop);
     }
     
-    function endGame(failed = false) {
+    function quitGame(failed = false) {
         cancelAnimationFrame(gameLoopId);
         gameLoopId = null;
         gameState = 'menu';
         Tone.Transport.stop();
-        if (audioPlayers) { audioPlayers.dispose(); audioPlayers = null; }
-        
-        activeNoteElements.forEach(n => n.element?.remove());
-        activeNoteElements = [];
+        if (audioPlayers) {
+            Object.values(audioPlayers.players).forEach(p => p.stop());
+            audioPlayers.dispose();
+            audioPlayers = null;
+        }
 
         if (!failed && activeTrack.totalNotes > 0) {
             showResults();
         } else {
-            navigateTo('songSelect');
+            navigateTo('mainMenu');
         }
-        setTimeout(() => navigateTo('mainMenu'), 100);
-        setTimeout(playMenuMusic, 500);
     }
 
     function showResults() {
@@ -715,28 +565,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // --- Input Handling ---
-    window.addEventListener('keydown', (e) => {
-        if (e.repeat) return;
-        const key = e.key.toLowerCase();
-        if (gameState === 'playing' && KEY_MAPPING[key] !== undefined) {
-            if(KEY_MAPPING[key] === 'sp') activateStarPower();
-            else handleFretPress(KEY_MAPPING[key]);
-        }
-        if (e.key === "Escape") {
-             if(gameState === 'playing') pauseGame();
-             else if (gameState === 'paused') resumeGame();
-        }
-    });
+    function setupInputListeners() {
+        window.addEventListener('keydown', (e) => {
+            if (e.repeat) return;
+            const key = e.key.toLowerCase();
+            if (KEY_MAPPING[key] !== undefined) {
+                if(KEY_MAPPING[key] === 'sp') activateStarPower();
+                else handleFretPress(KEY_MAPPING[key]);
+            }
+            if (e.key === "Escape") {
+                 if(gameState === 'playing') pauseGame();
+                 else if (gameState === 'paused') resumeGame();
+            }
+        });
 
-    window.addEventListener('keyup', (e) => {
-        const key = e.key.toLowerCase();
-        if (KEY_MAPPING[key] !== undefined && KEY_MAPPING[key] !== 'sp') {
-            handleFretRelease(KEY_MAPPING[key]);
-        }
-    });
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (KEY_MAPPING[key] !== undefined && KEY_MAPPING[key] !== 'sp') {
+                handleFretRelease(KEY_MAPPING[key]);
+            }
+        });
 
-    gameElements.frets.forEach((fret, index) => {
-        fret.addEventListener('touchstart', (e) => { e.preventDefault(); handleFretPress(index); }, { passive: false });
-        fret.addEventListener('touchend', (e) => { e.preventDefault(); handleFretRelease(index); });
-    });
+        gameElements.frets.forEach((fret, index) => {
+            fret.addEventListener('touchstart', (e) => { e.preventDefault(); handleFretPress(index); }, { passive: false });
+            fret.addEventListener('touchend', (e) => { e.preventDefault(); handleFretRelease(index); });
+            fret.addEventListener('touchcancel', (e) => { e.preventDefault(); handleFretRelease(index); });
+        });
+    }
+
+    initialize();
 });
