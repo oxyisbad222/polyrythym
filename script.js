@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const buttons = {
         playGame: document.getElementById('play-game-btn'),
+        playSetlist: document.getElementById('play-setlist-btn'),
         songFolderInput: document.getElementById('song-folder-input'),
         backToMenu: document.getElementById('back-to-menu-btn'),
         backToSongSelect: document.getElementById('back-to-song-select-btn'),
@@ -65,6 +66,10 @@ document.addEventListener('DOMContentLoaded', () => {
     
     let gameLoopId = null;
 
+    // IMPORTANT: This is a placeholder URL. Replace it with a link to your own setlist.json file.
+    // The file should be hosted on a service that supports CORS (like GitHub Gist, Backblaze B2, etc.)
+    const SETLIST_URL = 'https://gist.githubusercontent.com/oxyisbad/4d557c346a6f1955f1f719001880430d/raw/2e7373f7f18576443831850384814b7453488796/setlist.json';
+
     const NOTE_SPEED_MS = 1500;
     const HIT_WINDOW_MS = 85;
     const KEY_MAPPING = { 'a': 0, 's': 1, 'd': 2, 'k': 3, 'l': 4, ' ': 'sp' };
@@ -73,7 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const MENU_MUSIC = [
         { title: "Enter Sandman", artist: "Metallica", year: "1991", url: "https://p.scdn.co/mp3-preview/5458066a524a138c53874136606a5b882313624e?cid=774b29d4f13844c495f206cafdad9c86" },
         { title: "Welcome to the Jungle", artist: "Guns N' Roses", year: "1987", url: "https://p.scdn.co/mp3-preview/a392a81977579c3af7b822d56a3196903a450518?cid=774b29d4f13844c495f206cafdad9c86" },
-        { title: "Smells Like Teen Spirit", artist: "Nirvana", year: "1991", url: "https://p.scdn.co/mp3-preview/2b5276323a233b8431e7845210214c7efa826de6?cid=774b29d4f13844c495f206cafdad9c86" },
     ];
     const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange'];
     
@@ -82,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.values(screens).forEach(s => s.classList.remove('active'));
         screens[screenName]?.classList.add('active');
         gameState = screenName;
-        // Special case for entering gameplay
         if(screenName === 'game') gameState = 'playing';
     }
 
@@ -93,9 +96,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }, { once: true });
     
     buttons.playGame.addEventListener('click', () => songs.length > 0 && navigateTo('songSelect'));
+    buttons.playSetlist.addEventListener('click', loadSetlist);
+    buttons.songFolderInput.addEventListener('change', handleSongFolderSelect);
     buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
     buttons.backToSongSelect.addEventListener('click', () => navigateTo('songSelect'));
-    buttons.songFolderInput.addEventListener('change', handleSongFolderSelect);
     buttons.quit.addEventListener('click', endGame);
     buttons.resume.addEventListener('click', resumeGame);
     buttons.resultsBack.addEventListener('click', () => navigateTo('songSelect'));
@@ -108,12 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         menuMusicPlayer = new Tone.Player(randomSong.url).toDestination();
         menuMusicPlayer.loop = true;
         menuMusicPlayer.autostart = true;
-        menuMusicPlayer.onerror = (e) => { 
-            console.warn("Could not load menu music, trying next one.", e);
-            gameElements.menuMusicCard.classList.remove('visible');
-            setTimeout(playMenuMusic, 500); // Try another song after a short delay
-        };
-
+        menuMusicPlayer.onerror = () => { setTimeout(playMenuMusic, 500); };
 
         gameElements.menuMusicTitle.textContent = randomSong.title;
         gameElements.menuMusicArtist.textContent = randomSong.artist;
@@ -122,7 +121,74 @@ document.addEventListener('DOMContentLoaded', () => {
         gameElements.menuMusicCard.classList.add('visible');
     }
 
-    // --- Song Loading & Parsing ---
+    // --- Remote Setlist Loading ---
+    async function loadSetlist() {
+        navigateTo('loading');
+        gameElements.loadingText.textContent = 'Fetching setlist...';
+        try {
+            const response = await fetch(SETLIST_URL);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const setlist = await response.json();
+
+            gameElements.loadingText.textContent = `Loading ${setlist.length} song(s)...`;
+            const parsePromises = setlist.map(parseRemoteSong);
+            const parsedSongs = (await Promise.all(parsePromises)).filter(Boolean);
+
+            songs = [...parsedSongs];
+            if (songs.length > 0) {
+                 buttons.playGame.disabled = false;
+                 gameElements.songCount.textContent = `${songs.length} song${songs.length !== 1 ? 's' : ''} from setlist`;
+                 renderSongList();
+                 navigateTo('songSelect');
+            } else {
+                gameElements.songCount.textContent = 'Could not load setlist.';
+                navigateTo('mainMenu');
+            }
+        } catch (error) {
+            console.error("Could not load setlist:", error);
+            gameElements.songCount.textContent = 'Error loading setlist.';
+            navigateTo('mainMenu');
+        }
+    }
+
+    async function parseRemoteSong(songData) {
+        try {
+            const song = {
+                name: songData.name,
+                artist: songData.artist,
+                albumArtUrl: songData.albumArtUrl,
+                audioUrls: songData.audioUrls,
+                notesByTrack: {},
+                availableParts: {}
+            };
+
+            if (songData.chartUrl) {
+                const chartResponse = await fetch(songData.chartUrl);
+                if (!chartResponse.ok) throw new Error(`Failed to fetch chart: ${songData.chartUrl}`);
+                
+                if (songData.chartUrl.toLowerCase().endsWith('.chart')) {
+                    const chartText = await chartResponse.text();
+                    Object.assign(song, parseChart(chartText));
+                } else if (songData.chartUrl.toLowerCase().endsWith('.mid')) {
+                    const chartBuffer = await chartResponse.arrayBuffer();
+                    Object.assign(song, parseMidi(chartBuffer));
+                }
+            } else {
+                 return null;
+            }
+
+            if (Object.keys(song.availableParts).length === 0) {
+                 return null;
+            }
+            return song;
+        } catch (error) {
+            console.error(`Failed to parse remote song "${songData.name}":`, error);
+            return null;
+        }
+    }
+
+
+    // --- Local Song Loading ---
     async function handleSongFolderSelect(event) {
         navigateTo('loading');
         gameElements.loadingText.textContent = 'Parsing song files...';
@@ -169,12 +235,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const midiData = await midiFile.arrayBuffer();
                 Object.assign(song, parseMidi(midiData));
             } else {
-                 console.warn(`No .chart or .mid file found for ${song.name}`);
                  return null;
             }
             
             if (Object.keys(song.availableParts).length === 0 || Object.keys(song.audioUrls).length === 0) {
-                 console.warn(`Failed to load "${song.name}": Missing audio or chart parts.`);
                  return null;
             }
             return song;
@@ -317,7 +381,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let resolution = 192;
         const syncTrack = [];
 
-        // NEW: Expanded mapping for chart sections
         const partMapping = {
             '[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy',
             '[ExpertGuitar]': 'Guitar - Expert', '[HardGuitar]': 'Guitar - Hard', '[MediumGuitar]': 'Guitar - Medium', '[EasyGuitar]': 'Guitar - Easy',
