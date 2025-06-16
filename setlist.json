@@ -1,20 +1,11 @@
 [
   {
-    "name": "My First Song",
-    "artist": "An Artist",
-    "albumArtUrl": "https://cdn.example.com/path/to/album.png",
+    "name": "97' Bonnie & Clyde",
+    "artist": "Eminem",
+    "albumArtUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/album.png",
     "audioUrls": {
-      "song": "https://cdn.example.com/path/to/song.ogg"
+      "song": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/song.ogg"
     },
-    "chartUrl": "https://cdn.example.com/path/to/notes.chart"
-  },
-  {
-    "name": "Another Song",
-    "artist": "Another Artist",
-    "albumArtUrl": "https://cdn.example.com/path/to/other_album.jpg",
-    "audioUrls": {
-      "song": "https://cdn.example.com/path/to/other_song.mp3"
-    },
-    "chartUrl": "https://cdn.example.com/path/to/other_notes.mid"
+    "chartUrl": "https://f005.backblazeb2.com/file/polyrhythm-songs/97'+Bonnie+%26+Clyde+-+Eminem/notes.chart"
   }
 ]
