@@ -63,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const NOTE_FALL_DURATION_S = 1.5;
     const HIT_WINDOW_S = 0.1;
     const KEY_MAPPING = { 'a': 0, 's': 1, 'd': 2, 'k': 3, 'l': 4, ' ': 'sp' };
-    const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange', 'purple', 'cyan', 'white']; // Added open note color
+    const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange', 'purple', 'cyan', 'white'];
 
     // --- Core Game Flow & Screen Management ---
     const navigateTo = (screenName) => {
@@ -151,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const { metadata, syncTrack, notesByTrack } = songData;
         const resolution = metadata.Resolution || 192;
         
-        // Build Time Map for tick-to-second conversion
         const bpmEvents = syncTrack.filter(e => e.rawValue.includes('B')).map(e => ({
             tick: e.tick,
             bpm: parseInt(e.rawValue.split(' ')[1]) / 1000
@@ -173,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return lastEvent.time + ((ticks - lastEvent.tick) / resolution) * (60 / lastEvent.bpm);
         };
 
-        // Process notes for each track
         for (const trackName in notesByTrack) {
             const rawNotes = notesByTrack[trackName];
             const starPhrases = rawNotes.filter(n => n.rawValue.startsWith('S 2')).map(n => ({
@@ -194,16 +192,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             if (finalNotes.length > 0) {
-                // Sanitize track name: "[ExpertSingle]" -> "ExpertSingle"
                 const cleanTrackName = trackName.substring(1, trackName.length - 1);
                 songData.notesByTrack[cleanTrackName] = finalNotes.sort((a,b) => a.time - b.time);
                 
-                // For now, just list all available tracks
                 if (!songData.availableParts[cleanTrackName]) {
                     songData.availableParts[cleanTrackName] = finalNotes.length;
                 }
             }
-            delete songData.notesByTrack[trackName]; // remove raw data
+            delete songData.notesByTrack[trackName];
         }
         
         return songData;
@@ -216,11 +212,10 @@ document.addEventListener('DOMContentLoaded', () => {
         songs.forEach(song => {
             const item = document.createElement('div');
             item.className = 'song-item';
-            item.innerHTML = `<b>${song.name}</b>`; // Artist is now parsed from chart
+            item.innerHTML = `<b>${song.name}</b>`;
             item.onclick = () => {
                 currentSongData = song;
                 navigateTo('difficultySelect');
-                // Since we don't know difficulties until we parse, show a placeholder
                 gameElements.difficultySongTitle.textContent = "Loading difficulties...";
                 renderDifficultyOptions(song);
             };
@@ -231,7 +226,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderDifficultyOptions = async (songData) => {
         buttons.difficultyOptions.innerHTML = '';
         try {
-            // We need to fetch and parse the chart here to know what difficulties are available
             const chartResponse = await fetch(songData.chartUrl);
             if (!chartResponse.ok) throw new Error('Could not fetch chart to list difficulties.');
             const chartText = await chartResponse.text();
@@ -274,13 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLoadingText('Loading Audio...');
             cleanupAudio();
             
-            // Use MusicStream from chart metadata if available
             const audioFile = parsedChart.metadata.MusicStream || 'song.ogg';
-            // Construct full URL relative to the *song's* directory, not the game's root
             const audioUrl = new URL(audioFile, songInfo.chartUrl).href;
             
             audioPlayers = new Tone.Players({ 'song': audioUrl }).toDestination();
             await Tone.loaded();
+
+            // *** NEW *** Defensive check to ensure audio players were created
+            if (!audioPlayers || !audioPlayers.has("song") || !audioPlayers.get("song").loaded) {
+                throw new Error("Audio file failed to load or decode. The file might be corrupt or in an unsupported format.");
+            }
 
             updateLoadingText('Setting up visuals...');
             const notes = parsedChart.notesByTrack[trackKey];
@@ -294,12 +291,11 @@ document.addEventListener('DOMContentLoaded', () => {
             updateLoadingText('Starting Game...');
             resetGameState(notes);
             
-            // Apply chart offset
             const audioOffset = parsedChart.metadata.Offset || 0;
-            const startTime = Tone.now() + 1; // 1 second countdown
+            const startTime = Tone.now() + 1;
             
             Tone.Transport.start(startTime, audioOffset);
-            Object.values(audioPlayers.players).forEach(p => p.start(startTime));
+            audioPlayers.get("song").start(startTime);
 
             setTimeout(() => {
                 navigateTo('game');
