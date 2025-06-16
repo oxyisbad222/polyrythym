@@ -66,16 +66,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let scheduledEvents = [];
 
     const NOTE_SPEED_MS = 1500;
-    const HIT_WINDOW_MS = 80;
+    const HIT_WINDOW_MS = 85;
     const KEY_MAPPING = { 'a': 0, 's': 1, 'd': 2, 'k': 3, 'l': 4, ' ': 'sp' };
-    const MULTIPLIER_STAGES = [1, 2, 3, 4];
+    const MULTIPLIER_STAGES = [1, 2, 3, 4, 8];
     const NOTES_PER_MULTIPLIER = 10;
     const MENU_MUSIC = [
         { title: "Enter Sandman", artist: "Metallica", year: "1991", url: "https://p.scdn.co/mp3-preview/5458066a524a138c53874136606a5b882313624e?cid=774b29d4f13844c495f206cafdad9c86" },
         { title: "Welcome to the Jungle", artist: "Guns N' Roses", year: "1987", url: "https://p.scdn.co/mp3-preview/a392a81977579c3af7b822d56a3196903a450518?cid=774b29d4f13844c495f206cafdad9c86" },
         { title: "Smells Like Teen Spirit", artist: "Nirvana", year: "1991", url: "https://p.scdn.co/mp3-preview/2b5276323a233b8431e7845210214c7efa826de6?cid=774b29d4f13844c495f206cafdad9c86" },
     ];
-
+    const FRET_COLORS = ['green', 'red', 'yellow', 'blue', 'orange'];
+    
     // --- Core Game Flow & Screen Navigation ---
     function navigateTo(screenName) {
         Object.values(screens).forEach(s => s.classList.remove('active'));
@@ -85,9 +86,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     screens.splash.addEventListener('click', async () => {
         await Tone.start();
-        playMenuMusic();
         navigateTo('mainMenu');
-    });
+        playMenuMusic();
+    }, { once: true });
     
     buttons.playGame.addEventListener('click', () => songs.length > 0 && navigateTo('songSelect'));
     buttons.backToMenu.addEventListener('click', () => navigateTo('mainMenu'));
@@ -99,21 +100,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Menu Music ---
     function playMenuMusic() {
-        if (menuMusicPlayer) menuMusicPlayer.dispose();
+        if (menuMusicPlayer?.state === 'started') return;
         const randomSong = MENU_MUSIC[Math.floor(Math.random() * MENU_MUSIC.length)];
         
         menuMusicPlayer = new Tone.Player(randomSong.url).toDestination();
-        menuMusicPlayer.autostart = true;
         menuMusicPlayer.loop = true;
+        menuMusicPlayer.autostart = true;
 
         gameElements.menuMusicTitle.textContent = randomSong.title;
         gameElements.menuMusicArtist.textContent = randomSong.artist;
         gameElements.menuMusicYear.textContent = randomSong.year;
-        gameElements.menuMusicAlbumArt.style.backgroundImage = `url(https://placehold.co/80x80/111/fff?text=${randomSong.artist.charAt(0)})`;
+        gameElements.menuMusicAlbumArt.style.backgroundImage = `url(https://placehold.co/80x80/111111/ffffff?text=${randomSong.artist.charAt(0)})`;
         gameElements.menuMusicCard.classList.add('visible');
     }
 
-    // --- Song Loading & MIDI Processing ---
+    // --- Song Loading & Parsing ---
     async function handleSongFolderSelect(event) {
         navigateTo('loading');
         gameElements.loadingText.textContent = 'Parsing song files...';
@@ -125,7 +126,9 @@ document.addEventListener('DOMContentLoaded', () => {
             folders[folderName].push(file);
         });
 
-        const parsedSongs = (await Promise.all(Object.values(folders).map(parseSongFolder))).filter(Boolean);
+        const parsePromises = Object.values(folders).map(parseSongFolder);
+        const parsedSongs = (await Promise.all(parsePromises)).filter(Boolean);
+        
         songs.push(...parsedSongs);
         gameElements.songCount.textContent = `${songs.length} song${songs.length !== 1 ? 's' : ''} loaded`;
         buttons.playGame.disabled = songs.length === 0;
@@ -135,34 +138,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function parseSongFolder(files) {
         try {
-            const song = {
-                name: files[0].webkitRelativePath.split('/')[0], artist: 'Unknown', year: 'N/A',
-                albumArtUrl: 'https://placehold.co/300x300/111/fff?text=No+Art',
-                audioUrls: {}, notesByTrack: {}, availableParts: {}
-            };
+            const song = { name: files[0].webkitRelativePath.split('/')[0], artist: 'Unknown', year: 'N/A', albumArtUrl: 'https://placehold.co/300x300/111/fff?text=No+Art', audioUrls: {}, notesByTrack: {}, availableParts: {} };
+            
             const iniFile = files.find(f => f.name.toLowerCase() === 'song.ini');
             if (iniFile) Object.assign(song, parseIni(await iniFile.text()));
-            
+
             const artFile = files.find(f => f.name.toLowerCase().match(/album\.(jpg|jpeg|png)$/));
             if (artFile) song.albumArtUrl = URL.createObjectURL(artFile);
             
-            files.filter(f => f.name.endsWith('.opus')).forEach(f => song.audioUrls[f.name.replace('.opus', '')] = URL.createObjectURL(f));
+            files.filter(f => f.name.endsWith('.opus') || f.name.endsWith('.ogg')).forEach(f => {
+                const stemName = f.name.substring(0, f.name.lastIndexOf('.'));
+                song.audioUrls[stemName] = URL.createObjectURL(f);
+            });
 
-            const midiFile = files.find(f => f.name.toLowerCase() === 'notes.mid');
-            if (midiFile) Object.assign(song, processMidi(await midiFile.arrayBuffer()));
+            const chartFile = files.find(f => f.name.toLowerCase() === 'notes.chart');
+            if (chartFile) {
+                const chartData = await chartFile.text();
+                Object.assign(song, parseChart(chartData));
+            } else {
+                 console.warn(`No .chart file found for ${song.name}`);
+                 return null;
+            }
             
             if (Object.keys(song.availableParts).length === 0 || Object.keys(song.audioUrls).length === 0) return null;
             return song;
-        } catch (error) { console.error("Error parsing song folder:", error); return null; }
+        } catch (error) { console.error("Failed to parse song folder:", error); return null; }
     }
 
     function parseIni(text) {
         const data = {};
-        const section = text.match(/\[song\]\s*([\s\S]*?)(?=\s*\[|$)/i);
-        if(section){
-             section[1].split('\n').forEach(line => {
-                if (line.includes('=')) {
-                    const [key, val] = line.split('=').map(s => s.trim());
+        const sectionMatch = text.match(/\[song\]\s*([\s\S]*?)(?=\s*\[|$)/i);
+        if (sectionMatch) {
+            sectionMatch[1].split(/\r?\n/).forEach(line => {
+                const eqIndex = line.indexOf('=');
+                if (eqIndex > -1) {
+                    const key = line.substring(0, eqIndex).trim().toLowerCase();
+                    const val = line.substring(eqIndex + 1).trim();
                     if (key && val) data[key] = val;
                 }
             });
@@ -170,55 +181,83 @@ document.addEventListener('DOMContentLoaded', () => {
         return data;
     }
 
-    function processMidi(midiBuffer) {
-        const midi = MidiParser.parse(midiBuffer);
-        const ticksPerBeat = midi.timeDivision;
+    function parseChart(chartText) {
         const notesByTrack = {};
         const availableParts = {};
+        const lines = chartText.split(/\r?\n/);
         
-        let tempo = 120;
-        const expertGuitarNotes = [60, 61, 62, 63, 64];
-        const expertStarPower = 116;
+        let currentSection = '';
+        let resolution = 192;
+        const syncTrack = [];
 
-        midi.track.forEach(track => {
-            const trackNameEvent = track.event.find(e => e.type === 3);
-            if (!trackNameEvent || !trackNameEvent.data.includes('GUITAR')) return; // Simplified for guitar
-
-            const notes = [];
-            let currentTicks = 0;
-            let starPowerActive = false;
-
-            track.event.forEach(event => {
-                currentTicks += event.deltaTime;
-                const time = (currentTicks / ticksPerBeat) * (60 / tempo);
-
-                if (event.type === 9) { // Note On
-                    const pitch = event.data[0];
-                    const fretIndex = expertGuitarNotes.indexOf(pitch);
-                    
-                    if (fretIndex !== -1) {
-                        notes.push({ time, fret: fretIndex, isStar: starPowerActive, duration: 0, spawned: false, hit: false, missed: false });
-                    } else if (pitch === expertStarPower) {
-                        starPowerActive = true;
+        lines.forEach(line => {
+            line = line.trim();
+            if (line.startsWith('[') && line.endsWith(']')) {
+                currentSection = line;
+                if (!notesByTrack[currentSection]) notesByTrack[currentSection] = [];
+            } else if (line.includes('=')) {
+                const [key, val] = line.split('=').map(s => s.trim());
+                if (currentSection === '[Song]') {
+                    if(key === 'Resolution') resolution = parseFloat(val);
+                } else if(currentSection === '[SyncTrack]') {
+                    const [tick, type, value] = line.split(' ');
+                    if(type === 'B') syncTrack.push({ tick: parseInt(tick), bpm: parseInt(value) / 1000 });
+                } else if (notesByTrack[currentSection]) {
+                    const [tick, type, fret, duration] = line.split(' ');
+                    if(type === 'N') {
+                        notesByTrack[currentSection].push({
+                            tick: parseInt(tick),
+                            fret: parseInt(fret),
+                            duration: parseInt(duration),
+                        });
                     }
-                } else if (event.type === 8) { // Note Off
-                     if (event.data[0] === expertStarPower) starPowerActive = false;
                 }
-            });
-
-            if (notes.length > 0) {
-                const partName = "Guitar - Expert"; // Simplified
-                notesByTrack[partName] = notes.sort((a,b) => a.time - b.time);
-                availableParts['Guitar'] = ['Expert'];
             }
         });
+
+        syncTrack.sort((a,b) => a.tick - b.tick);
+        let lastBpm = 120; let lastTick = 0; let timeAtLastBpm = 0;
+        syncTrack.forEach(bpmEvent => {
+            const ticksSinceLast = bpmEvent.tick - lastTick;
+            timeAtLastBpm += (ticksSinceLast / resolution) * (60 / lastBpm);
+            bpmEvent.time = timeAtLastBpm;
+            lastTick = bpmEvent.tick;
+            lastBpm = bpmEvent.bpm;
+        });
+
+        const ticksToSeconds = (ticks) => {
+            let time = 0;
+            let lastTick = 0;
+            let lastBpm = 120;
+            let timeAtLastMarker = 0;
+
+            for(const event of syncTrack){
+                if(ticks < event.tick) break;
+                time = event.time;
+                lastTick = event.tick;
+                lastBpm = event.bpm;
+            }
+            time += ((ticks - lastTick) / resolution) * (60 / lastBpm);
+            return time;
+        };
+
+        const partMapping = {'[ExpertSingle]': 'Guitar - Expert', '[HardSingle]': 'Guitar - Hard', '[MediumSingle]': 'Guitar - Medium', '[EasySingle]': 'Guitar - Easy'};
+        Object.keys(partMapping).forEach(section => {
+            if(notesByTrack[section]?.length > 0){
+                notesByTrack[partMapping[section]] = notesByTrack[section].map(n => ({...n, time: ticksToSeconds(n.tick)}));
+                delete notesByTrack[section];
+                availableParts['Guitar'] = availableParts['Guitar'] || [];
+                availableParts['Guitar'].push(partMapping[section].split(' - ')[1]);
+            }
+        });
+        
         return { notesByTrack, availableParts };
     }
 
     // --- UI Rendering ---
     function renderSongList() {
         gameElements.songList.innerHTML = '';
-        songs.forEach(song => {
+        songs.sort((a, b) => a.name.localeCompare(b.name)).forEach(song => {
             const item = document.createElement('div');
             item.className = 'song-item';
             item.innerHTML = `<b>${song.name}</b><br>${song.artist}`;
@@ -235,12 +274,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDifficultyOptions(parts) {
         buttons.difficultyOptions.innerHTML = '';
         Object.entries(parts).forEach(([instrument, difficulties]) => {
-            difficulties.forEach(difficulty => {
-                const btn = document.createElement('button');
-                btn.className = 'menu-btn';
-                btn.textContent = `${instrument} - ${difficulty}`;
-                btn.onclick = () => startGame(`${instrument}_${difficulty}`);
-                buttons.difficultyOptions.appendChild(btn);
+            ['Expert', 'Hard', 'Medium', 'Easy'].forEach(difficulty => {
+                 if (difficulties.includes(difficulty)) {
+                    const btn = document.createElement('button');
+                    btn.className = 'menu-btn';
+                    btn.textContent = `${instrument} - ${difficulty}`;
+                    btn.onclick = () => startGame(`${instrument}_${difficulty}`);
+                    buttons.difficultyOptions.appendChild(btn);
+                 }
             });
         });
     }
@@ -255,17 +296,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (menuMusicPlayer) menuMusicPlayer.stop();
         if(audioPlayers) await audioPlayers.dispose();
         
-        activeTrack.notes = currentSongData.notesByTrack[trackKey];
+        activeTrack.notes = currentSongData.notesByTrack[trackKey].map(n => ({...n, spawned: false, hit: false, missed: false}));
         activeTrack.totalNotes = activeTrack.notes.length;
-        activeTrack.notes.forEach(n => { n.spawned = n.hit = n.missed = false; delete n.element; });
         
-        gameElements.albumArt.src = currentSongData.albumArtUrl;
-        gameElements.songTitle.textContent = currentSongData.name;
-        gameElements.songArtist.textContent = currentSongData.artist;
+        Object.assign(gameElements, { albumArt: {src: currentSongData.albumArtUrl}, songTitle: {textContent: currentSongData.name}, songArtist: {textContent: currentSongData.artist}});
         
         audioPlayers = new Tone.Players(currentSongData.audioUrls, () => {
             Object.values(audioPlayers.players).forEach(p => p.toDestination());
-            
             resetGameState();
             navigateTo('game');
             Tone.Transport.start();
@@ -274,13 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function resetGameState() {
-        score = 0;
-        combo = 0;
-        maxCombo = 0;
-        notesHit = 0;
-        multiplier = 1;
-        rockMeter = 50;
-        starPower = 0;
+        score = 0; combo = 0; maxCombo = 0; notesHit = 0; multiplier = 1; rockMeter = 50; starPower = 0;
         isStarPowerActive = false;
         gameElements.highway.classList.remove('star-power-active');
         updateUI();
@@ -295,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 spawnNote(note);
             }
         });
-
+        
         for (let i = activeNoteElements.length - 1; i >= 0; i--) {
             const note = activeNoteElements[i];
             const timeUntilHit = note.time - currentTime;
@@ -309,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        gameLoopId = requestAnimationFrame(gameLoop);
+        if (Tone.Transport.state === 'started') gameLoopId = requestAnimationFrame(gameLoop);
     }
     
     function spawnNote(noteData) {
@@ -324,7 +355,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         noteEl.style.left = `${noteData.fret * 20}%`;
         noteEl.style.top = `0%`;
-        noteEl.style.animationDuration = `${NOTE_SPEED_MS}ms`;
 
         noteData.element = noteEl;
         noteData.spawned = true;
@@ -348,10 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        
-        if (noteToHit) {
-            hitNote(noteToHit);
-        }
+        if (noteToHit) hitNote(noteToHit);
     }
     
     function handleFretRelease(fretIndex) {
@@ -360,16 +387,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hitNote(note) {
         note.hit = true;
-        note.element.classList.add('hit');
-        setTimeout(() => note.element.remove(), 200);
-
+        note.element.remove();
+        
         combo++;
         if (combo > maxCombo) maxCombo = combo;
         notesHit++;
         multiplier = MULTIPLIER_STAGES[Math.min(Math.floor(combo / NOTES_PER_MULTIPLIER), MULTIPLIER_STAGES.length - 1)];
         score += 50 * (isStarPowerActive ? multiplier * 2 : multiplier);
-        rockMeter = Math.min(100, rockMeter + 1);
-        if (note.isStar) starPower = Math.min(100, starPower + 3);
+        rockMeter = Math.min(100, rockMeter + 1.5);
+        if (note.isStar) starPower = Math.min(100, starPower + 3.5);
         
         updateUI();
     }
@@ -383,32 +409,27 @@ document.addEventListener('DOMContentLoaded', () => {
         multiplier = 1;
         rockMeter = Math.max(0, rockMeter - 8);
         
-        if (rockMeter <= 0) endGame(true); // Game Over
+        if (rockMeter <= 0) endGame(true);
         updateUI();
     }
     
     function activateStarPower() {
-        if (starPower >= 50 && !isStarPowerActive) {
-            isStarPowerActive = true;
-            gameElements.highway.classList.add('star-power-active');
-            
-            const spDuration = Tone.Time("4n").toSeconds() * 8; // 8 beats
-            setTimeout(() => {
+        if (starPower < 50 || isStarPowerActive) return;
+        
+        isStarPowerActive = true;
+        gameElements.highway.classList.add('star-power-active');
+        
+        const spDrainRate = 100 / 8; // Drain over 8 seconds
+        let spInterval = setInterval(() => {
+            starPower -= spDrainRate / 10;
+            if (starPower <= 0) {
+                starPower = 0;
                 isStarPowerActive = false;
                 gameElements.highway.classList.remove('star-power-active');
-            }, spDuration * 1000);
-
-            let spInterval = setInterval(() => {
-                starPower -= 100 / (spDuration * 10);
-                if (starPower <= 0) {
-                    starPower = 0;
-                    isStarPowerActive = false;
-                    gameElements.highway.classList.remove('star-power-active');
-                    clearInterval(spInterval);
-                }
-                updateUI();
-            }, 100);
-        }
+                clearInterval(spInterval);
+            }
+            updateUI();
+        }, 100);
     }
 
     function updateUI() {
@@ -437,17 +458,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function endGame(failed = false) {
         cancelAnimationFrame(gameLoopId);
+        gameLoopId = null;
         Tone.Transport.stop();
-        if (audioPlayers) {
-            audioPlayers.dispose();
-            audioPlayers = null;
-        }
-        scheduledEvents.forEach(id => Tone.Transport.clear(id));
+        if (audioPlayers) audioPlayers.dispose();
         gameElements.noteContainer.innerHTML = '';
         
-        if (!failed) {
-            showResults();
-        } else {
+        if (!failed) showResults();
+        else {
             alert('YOU FAILED!');
             navigateTo('songSelect');
         }
@@ -473,9 +490,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if(KEY_MAPPING[key] === 'sp') activateStarPower();
             else handleFretPress(KEY_MAPPING[key]);
         }
-        if (key === "escape") {
-            if (gameState === 'playing') pauseGame();
-            else if (gameState === 'paused') resumeGame();
+        if (e.key === "Escape") {
+             if(gameState === 'playing') pauseGame();
+             else if (gameState === 'paused') resumeGame();
         }
     });
 
